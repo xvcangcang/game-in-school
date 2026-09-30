@@ -13,6 +13,7 @@ export interface CreateCharacterInput {
   name: string;
   role: RoleId;
   title?: string;
+  setting?: string;
   gender?: Gender;
   personality?: PersonalityId;
   appearance?: Partial<Appearance>;
@@ -24,6 +25,11 @@ export interface CreateCharacterInput {
   id?: string;
 }
 
+/** 身份标签最大长度 */
+export const TITLE_MAX_LENGTH = 10;
+/** 自由设定最大长度。给 AI 的上下文，太长会挤爆提示词，也要花更多 token */
+export const SETTING_MAX_LENGTH = 200;
+
 /**
  * 没填身份时按 role 推一个默认值。
  * 主角默认叫「学生」——TA 也可能是转学生、班长，但那是玩家自己改的事。
@@ -33,19 +39,18 @@ export function defaultTitleFor(role: RoleId, isProtagonist = false): string {
   return roleMeta(role).name;
 }
 
-/** 身份的最大长度，UI 和校验共用 */
-export const TITLE_MAX_LENGTH = 10;
-
 export function createCharacter(input: CreateCharacterInput): Character {
   const role = roleMeta(input.role);
   const isProtagonist = input.isProtagonist ?? false;
   const title = (input.title ?? '').trim().slice(0, TITLE_MAX_LENGTH);
+  const setting = (input.setting ?? '').trim().slice(0, SETTING_MAX_LENGTH);
 
   return {
     id: input.id ?? shortId('ch'),
     name: input.name.trim() || '无名同学',
     role: input.role,
     title: title || defaultTitleFor(input.role, isProtagonist),
+    setting,
     gender: input.gender ?? 'n',
     personality: input.personality ?? 'ordinary',
     appearance: clampAppearance(input.appearance ?? {}),
@@ -96,6 +101,8 @@ export function describeCharacter(c: Character): string {
     p.tags.join('、'),
   ];
   if (c.bio) bits.push(c.bio);
+  // 玩家自己写的设定原样交给 AI，不做任何加工
+  if (c.setting) bits.push(`补充设定：${c.setting}`);
   bits.push(`当前对主角好感 ${c.relation}（${relationLabel(c.relation).name}）`);
   return bits.filter(Boolean).join('；');
 }

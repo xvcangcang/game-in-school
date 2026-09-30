@@ -47,6 +47,20 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
     version: 3,
     dayStartStats: raw.dayStartStats ?? raw.stats,
   }),
+
+  /** 3 → 4：Character 新增 `setting`（交给 AI 的自由设定），补空串 */
+  3: (raw) => {
+    const characters = Array.isArray(raw.characters) ? raw.characters : [];
+    return {
+      ...raw,
+      version: 4,
+      characters: characters.map((entry) => {
+        if (typeof entry !== 'object' || entry === null) return entry;
+        const ch = entry as Record<string, unknown>;
+        return typeof ch.setting === 'string' ? ch : { ...ch, setting: '' };
+      }),
+    };
+  },
 };
 
 export class SaveError extends Error {

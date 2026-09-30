@@ -168,6 +168,15 @@ export interface Character {
    * 为空时按 role 推一个默认值，见 game/character.ts 的 defaultTitleFor()。
    */
   title?: string;
+  /**
+   * 自由填写的「设定」，会**原样**塞进 AI 提示词。
+   *
+   * 与 title 的区别：title 是个短标签（显示在名字后面），setting 想写多长写多长——
+   * 家庭背景、特长、怪癖、口头禅、跟谁有过节都行。它不参与任何引擎判定，
+   * 纯粹是把玩家的想法直接交给 AI。所以**关掉 AI 时它没有任何作用**，
+   * UI 上应该禁用并说明原因（见 scenes/creation.ts）。
+   */
+  setting?: string;
   gender: Gender;
   personality: PersonalityId;
   appearance: Appearance;
@@ -369,5 +378,6 @@ export interface Settings {
  * 1 → 初版
  * 2 → Character 增加自由填写的 `title`（身份），迁移时按 role 补默认值
  * 3 → GameState 增加 `dayStartStats`（日终结算用），迁移时用当前属性兜底
+ * 4 → Character 增加自由填写的 `setting`（交给 AI 的设定），迁移时补空串
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;

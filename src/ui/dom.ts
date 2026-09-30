@@ -40,6 +40,22 @@ export function h<K extends keyof HTMLElementTagNameMap>(
         el.textContent = String(value);
       } else if (key === 'html') {
         el.innerHTML = String(value);
+      } else if (key === 'value') {
+        /*
+         * 表单控件的初值必须直接赋给 .value。
+         * 用 setAttribute('value', ...) 对 <input> 只是设了 defaultValue（能显示），
+         * 对 <textarea> 则**完全无效**——textarea 没有 value 属性这回事。
+         * 这个坑踩过：编辑已有角色的「一句话人设」时文本框一直是空的。
+         */
+        if (
+          el instanceof HTMLInputElement ||
+          el instanceof HTMLTextAreaElement ||
+          el instanceof HTMLSelectElement
+        ) {
+          el.value = String(value);
+        } else {
+          el.setAttribute(key, String(value));
+        }
       } else if (key === 'style') {
         if (typeof value === 'string') el.setAttribute('style', value);
         else Object.assign(el.style, value);

@@ -9,7 +9,15 @@
  * 中途退出不会污染任何数据。
  */
 
-import { loadRoster, saveRoster, resetRoster } from '@/app/roster';
+import {
+  loadProtagonistTemplate,
+  loadRoster,
+  resetProtagonistTemplate,
+  resetRoster,
+  saveProtagonistTemplate,
+  saveRoster,
+  type ProtagonistTemplate,
+} from '@/app/roster';
 import { gameStore, setActiveSlot, settingsStore } from '@/app/state';
 import type { Scene, SceneContext } from '@/app/router';
 import { C } from '@/render/palette';
@@ -19,7 +27,7 @@ import { clampAppearance, DEFAULT_APPEARANCE } from '@/data/appearances';
 import { DEFAULT_PROTAGONIST_F, DEFAULT_PROTAGONIST_M } from '@/data/presets';
 import { personalityMeta, PERSONALITY_LIST } from '@/data/personalities';
 import { ROLE_GROUPS, roleMeta } from '@/data/roles';
-import { createCharacter, displayTitle, relationLabel, TITLE_MAX_LENGTH } from '@/game/character';
+import { createCharacter, displayTitle, relationLabel, SETTING_MAX_LENGTH, TITLE_MAX_LENGTH } from '@/game/character';
 import { createNewGame } from '@/game/newGame';
 import type {
   Appearance,
@@ -46,6 +54,8 @@ interface Draft {
     name: string;
     /** 自由填写的身份，留空就用「学生」 */
     title: string;
+    /** 自由填写的设定，会原样交给 AI；关掉 AI 时没有意义 */
+    setting: string;
     gender: Gender;
     personality: PersonalityId;
     appearance: Appearance;
@@ -54,6 +64,7 @@ interface Draft {
 }
 
 const STEP_TITLES = ['① 你是谁', '② 长什么样', '③ 班里还有谁'];
+const STUDIO_STEP_TITLES = ['① 主角资料', '② 主角外观', '③ 班里的角色'];
 
 export function creationScene(): Scene {
   let step = 0;
@@ -65,21 +76,69 @@ export function creationScene(): Scene {
   /** 「下一步」按钮的引用，用于在姓名输入时实时切换可用状态 */
   let nextBtnRef: HTMLButtonElement | null = null;
 
+  /** 这一局/这个模式到底会不会用到 AI。用来决定「设定」这类 AI 专用输入框是否可用。 */
+  const aiInUse = (): boolean =>
+    mode === 'new' ? draft.aiEnabled && settingsStore.get().ai.enabled : settingsStore.get().ai.enabled;
+
+  /**
+   * 「设定」输入框。
+   *
+   * 它是**纯 AI 上下文**——只写进提示词，不参与任何引擎判定。
+   * 所以关掉 AI 时直接禁用并说明原因，比让玩家白写半天却毫无效果强。
+   */
+  function createSettingField(
+    initial: string,
+    onChange: (v: string) => void,
+    placeholder: string,
+  ): { el: HTMLElement; textarea: HTMLTextAreaElement } {
+    const aiOn = aiInUse();
+    const textarea = h('textarea', {
+      class: 'pixel-input pixel-textarea',
+      maxlength: String(SETTING_MAX_LENGTH),
+      placeholder: aiOn ? placeholder : '（已关闭 AI 剧情，这里填了也不会被使用）',
+      value: initial,
+      disabled: !aiOn,
+    });
+    textarea.addEventListener('input', () => onChange(textarea.value));
+    textarea.addEventListener('keydown', (e) => e.stopPropagation());
+
+    return {
+      textarea,
+      el: h(
+        'div',
+        { class: 'field' },
+        textarea,
+        h('p', {
+          class: 'dim small-note',
+          text: aiOn
+            ? `想写什么就写什么（最多 ${SETTING_MAX_LENGTH} 字），会原样交给 AI 当作背景设定。`
+            : 'AI 剧情已关闭，这个输入框用不上。到「设置 → AI 剧情」打开就能填。',
+        }),
+      ),
+    };
+  }
+
+  const templateToDraft = (t: ProtagonistTemplate): Draft['protagonist'] => ({
+    name: t.name,
+    title: t.title,
+    setting: t.setting,
+    gender: t.gender,
+    personality: t.personality,
+    appearance: t.appearance,
+  });
+
   const resetDraft = (params?: unknown): void => {
     const p = params as NewGameParams | undefined;
+    const template = loadProtagonistTemplate();
+
     if (p && p.phase) {
       mode = 'new';
       draft = {
         phase: p.phase,
         difficulty: p.difficulty,
         aiEnabled: p.aiEnabled,
-        protagonist: {
-          name: '',
-          title: '',
-          gender: 'm',
-          personality: 'ordinary',
-          appearance: clampAppearance({ ...DEFAULT_PROTAGONIST_M }),
-        },
+        // 预填上一次在角色工坊里存下的主角设定，省得每局重敲
+        protagonist: templateToDraft(template),
         npcs: loadRoster(),
       };
     } else {
@@ -88,13 +147,7 @@ export function creationScene(): Scene {
         phase: 'g1',
         difficulty: 'normal',
         aiEnabled: settingsStore.get().ai.enabled,
-        protagonist: {
-          name: '',
-          title: '',
-          gender: 'm',
-          personality: 'ordinary',
-          appearance: clampAppearance({ ...DEFAULT_PROTAGONIST_M }),
-        },
+        protagonist: templateToDraft(template),
         npcs: loadRoster(),
       };
     }
@@ -151,15 +204,34 @@ export function creationScene(): Scene {
     });
     titleInput.addEventListener('keydown', (e) => e.stopPropagation());
 
+    // 设定：想写多长写多长，原样交给 AI。关掉 AI 时它没有任何作用，所以直接禁用并说明原因。
+    const settingTextarea = createSettingField(
+      draft.protagonist.setting,
+      (v) => {
+        draft.protagonist.setting = v;
+      },
+      '例如：家里开小卖部，数学很差但跑得快，口头禅是「这个我会」。写什么都可以。',
+    );
+
     const titleRow = h(
-      'section',
-      { class: 'form-section' },
-      h('h3', { class: 'section-title', text: '身份' }),
-      titleInput,
-      h('p', {
-        class: 'dim small-note',
-        text: '随便写。它会显示在你的名字后面，AI 写剧情时也会参考它。留空就是「学生」。',
-      }),
+      'div',
+      { class: 'form-grid' },
+      h(
+        'section',
+        { class: 'form-section' },
+        h('h3', { class: 'section-title', text: '身份' }),
+        titleInput,
+        h('p', {
+          class: 'dim small-note',
+          text: '短标签，显示在名字后面。留空就是「学生」。',
+        }),
+      ),
+      h(
+        'section',
+        { class: 'form-section' },
+        h('h3', { class: 'section-title', text: '设定' }),
+        settingTextarea.el,
+      ),
     );
 
     const genderRow = h('div', { class: 'opt-row' });
@@ -246,6 +318,22 @@ export function creationScene(): Scene {
         h('h3', { class: 'section-title', text: '性格（决定初始属性和可选选项）' }),
         personalityRow,
       ),
+      mode === 'studio'
+        ? h(
+            'div',
+            { class: 'row-inline' },
+            h('button', {
+              class: 'pixel-btn',
+              type: 'button',
+              text: '恢复默认主角',
+              onClick: () => {
+                if (!confirm('把默认主角恢复成初始状态？当前改动会丢失。')) return;
+                draft.protagonist = templateToDraft(resetProtagonistTemplate());
+                renderBody();
+              },
+            }),
+          )
+        : null,
     );
   }
 
@@ -430,16 +518,19 @@ export function creationScene(): Scene {
     });
     relInput.addEventListener('keydown', (e) => e.stopPropagation());
 
-    const bioInput = h('textarea', {
-      class: 'pixel-input pixel-textarea',
-      maxlength: '60',
-      placeholder: '一句话人设，会作为 AI 生成剧情时的上下文',
-      value: working.bio,
-    });
-    bioInput.addEventListener('input', () => {
-      working.bio = bioInput.value;
-    });
-    bioInput.addEventListener('keydown', (e) => e.stopPropagation());
+    /*
+     * 设定：想写多长写多长，原样交给 AI。
+     * 原来这里是一个 60 字的「一句话人设」（Character.bio），但那个字段是给预设角色写死的资料用的；
+     * 玩家自己写的东西走 setting，两个框长得一样、作用也重叠，索性只留一个。
+     * 预设角色的 bio 仍然保留在数据里，一样会进 AI 上下文（见 describeCharacter）。
+     */
+    const settingField = createSettingField(
+      working.setting ?? '',
+      (v) => {
+        working.setting = v;
+      },
+      '例如：其实想当美术生，但家里不同意；书包里永远有一包水果糖。',
+    );
 
     return h(
       'div',
@@ -500,12 +591,7 @@ export function creationScene(): Scene {
             h('span', { class: 'field-label', text: `对主角好感：${working.relation}` }),
             h('span', { class: 'slider-wrap' }, relInput, relValue),
           ),
-          h(
-            'label',
-            { class: 'field' },
-            h('span', { class: 'field-label', text: '一句话人设' }),
-            bioInput,
-          ),
+          settingField.el,
         ),
       ),
       picker.el,
@@ -567,57 +653,61 @@ export function creationScene(): Scene {
       return;
     }
 
-    if (titleEl) titleEl.textContent = mode === 'new' ? STEP_TITLES[step] : '角色工坊';
+    const stepTitles = mode === 'new' ? STEP_TITLES : STUDIO_STEP_TITLES;
+    if (titleEl) titleEl.textContent = stepTitles[step] ?? '角色工坊';
 
+    /*
+     * 工坊模式和「新游戏」走同一套三步流程，区别只在于**保存到哪里**：
+     *  - 新模式：这份主角 + 阵容直接开局
+     *  - 工坊模式：存成「默认主角模板」+「预设阵容」，下次开新游戏时预填
+     * 之前工坊没有分步导航，step 永远停在 0，只能看到主角页，改不了同学——那是个死胡同。
+     */
     const pieces: HTMLElement[] = [];
-    if (mode === 'studio') {
-      /*
-       * 工坊模式**直接进阵容页**。
-       * 之前没有分步导航，step 永远停在 0，于是只能看到主角那一步——
-       * 而工坊模式下主角的改动根本不会保存（阵容里只有 NPC），纯属死胡同。
-       * 主角是在「新游戏」里创建的，工坊负责的是班里的其他角色。
-       */
+    if (mode === 'studio' && step === 0) {
       pieces.push(
         h('p', {
           class: 'dim small-note',
-          text: '这里管理的是开新游戏时会用到的预设阵容（同学、老师、家人）。改动存在本机浏览器里。主角在「新游戏」里创建。',
+          text: '工坊里改的是「默认主角」和「预设阵容」，开新游戏时会用它们预填。切页自动保存，只存在本机浏览器里。',
         }),
       );
-      pieces.push(buildRosterStep());
-    } else {
-      pieces.push(step === 0 ? buildIdentityStep() : step === 1 ? buildAppearanceStep() : buildRosterStep());
     }
+    pieces.push(
+      step === 0 ? buildIdentityStep() : step === 1 ? buildAppearanceStep() : buildRosterStep(),
+    );
     bodyEl.replaceChildren(...pieces);
 
-    const canFinish =
-      mode === 'studio' || draft.protagonist.name.trim().length > 0;
+    const canFinish = mode === 'studio' || draft.protagonist.name.trim().length > 0;
+
+    /** 工坊模式下切页就顺手存一次：否则玩家改了主角却没走到最后一步，改动会无声丢掉 */
+    const goStep = (next: number): void => {
+      if (mode === 'studio') saveStudioDraft();
+      step = Math.max(0, Math.min(2, next));
+      renderBody();
+    };
 
     const actions: HTMLButtonElement[] = [];
 
-    if (mode === 'new' && step > 0) {
+    if (step > 0) {
       actions.push(
         h('button', {
           class: 'pixel-btn',
           type: 'button',
           text: '← 上一步',
-          onClick: () => {
-            step--;
-            renderBody();
-          },
+          onClick: () => goStep(step - 1),
         }),
       );
     }
 
-    if (mode === 'new' && step < 2) {
+    if (step < 2) {
       const nextBtn = h('button', {
         class: 'pixel-btn pixel-btn--primary',
         type: 'button',
         text: '下一步 →',
-        disabled: step === 0 && draft.protagonist.name.trim().length === 0,
+        // 新模式必须有名字才能继续；工坊模式允许先留着空
+        disabled: mode === 'new' && step === 0 && draft.protagonist.name.trim().length === 0,
         onClick: () => {
-          if (step === 0 && draft.protagonist.name.trim().length === 0) return;
-          step++;
-          renderBody();
+          if (mode === 'new' && step === 0 && draft.protagonist.name.trim().length === 0) return;
+          goStep(step + 1);
         },
       });
       nextBtnRef = nextBtn;
@@ -626,33 +716,43 @@ export function creationScene(): Scene {
       nextBtnRef = null;
     }
 
-    if (mode === 'new' && step === 2) {
+    if (step === 2) {
       actions.push(
-        h('button', {
-          class: 'pixel-btn pixel-btn--primary',
-          type: 'button',
-          text: '开学！',
-          disabled: !canFinish,
-          onClick: finishNewGame,
-        }),
-      );
-    }
-
-    if (mode === 'studio') {
-      actions.push(
-        h('button', {
-          class: 'pixel-btn pixel-btn--primary',
-          type: 'button',
-          text: '保存阵容',
-          onClick: () => {
-            saveRoster(draft.npcs);
-            toast?.show('阵容已保存，开新游戏时会用到', 'ok');
-          },
-        }),
+        mode === 'new'
+          ? h('button', {
+              class: 'pixel-btn pixel-btn--primary',
+              type: 'button',
+              text: '开学！',
+              disabled: !canFinish,
+              onClick: finishNewGame,
+            })
+          : h('button', {
+              class: 'pixel-btn pixel-btn--primary',
+              type: 'button',
+              text: '完成',
+              onClick: () => {
+                saveStudioDraft();
+                ctxRef?.go('menu');
+              },
+            }),
       );
     }
 
     actionsEl.replaceChildren(...actions);
+  }
+
+  /** 工坊模式的保存：主角模板 + 预设阵容一起存 */
+  function saveStudioDraft(): void {
+    saveProtagonistTemplate({
+      name: draft.protagonist.name.trim(),
+      title: draft.protagonist.title.trim(),
+      setting: draft.protagonist.setting.trim(),
+      gender: draft.protagonist.gender,
+      personality: draft.protagonist.personality,
+      appearance: draft.protagonist.appearance,
+    });
+    saveRoster(draft.npcs);
+    toast?.show('已保存：默认主角 + 预设阵容', 'ok');
   }
 
   let ctxRef: SceneContext | null = null;
@@ -665,6 +765,7 @@ export function creationScene(): Scene {
       protagonist: {
         name: draft.protagonist.name.trim() || '无名同学',
         title: draft.protagonist.title,
+        setting: draft.protagonist.setting,
         gender: draft.protagonist.gender,
         personality: draft.protagonist.personality,
         appearance: draft.protagonist.appearance,
@@ -672,7 +773,15 @@ export function creationScene(): Scene {
       npcs: draft.npcs.map((n) => ({ ...n })),
     });
 
-    // 顺手把这份阵容存成默认阵容，下次开新游戏不用重捏
+    // 顺手把主角和阵容存成默认值，下次开新游戏不用重捏
+    saveProtagonistTemplate({
+      name: draft.protagonist.name.trim(),
+      title: draft.protagonist.title.trim(),
+      setting: draft.protagonist.setting.trim(),
+      gender: draft.protagonist.gender,
+      personality: draft.protagonist.personality,
+      appearance: draft.protagonist.appearance,
+    });
     saveRoster(draft.npcs);
 
     gameStore.set(state);
@@ -720,7 +829,7 @@ export function creationScene(): Scene {
                 text:
                   mode === 'new'
                     ? `${PHASE_META[draft.phase].name} · 主角和阵容`
-                    : '编辑预设的同学与老师',
+                    : '默认主角 + 预设的同学与老师',
               }),
             ),
           ),
