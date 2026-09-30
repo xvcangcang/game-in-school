@@ -68,7 +68,15 @@ export function playScene(): Scene {
   let lastTickChars = 0;
   /** 每次推进时段都 +1；异步的 AI 请求回来时用它判断"这一轮是不是已经作废了" */
   let turnToken = 0;
-  let lastAiNote = '';
+  /**
+   * 当前这一段为什么不是 AI 写的。
+   *  null         = 就是 AI 写的
+   *  'off'        = 玩家把 AI 关了
+   *  'unavailable'= 没配 Key / 熔断中，压根没试
+   *  'failed'     = 试了但没接上（超时、报错、校验不过）
+   * 玩家得知道"没等到 AI"和"本来就不用 AI"是两回事，所以这三种要分开说。
+   */
+  let builtinReason: 'off' | 'unavailable' | 'failed' | null = null;
 
   let topbarEl: HTMLElement | null = null;
   let dialogEl: HTMLElement | null = null;
@@ -123,8 +131,14 @@ export function playScene(): Scene {
     resultLines = [];
     mode = 'event';
 
-    // 要开 AI 就先显示"正在编剧情"
-    const wantAi = s.aiEnabled && aiReadyForAttempt();
+    // 要开 AI 就先显示"正在编剧情"；同时先判断清楚"这一段凭什么不是 AI 写的"
+    const aiSwitchedOn = s.aiEnabled && settingsStore.get().ai.enabled;
+    const wantAi = aiSwitchedOn && aiReadyForAttempt();
+
+    if (!aiSwitchedOn) builtinReason = 'off';
+    else if (!wantAi) builtinReason = 'unavailable';
+    else builtinReason = null; // 待会儿真失败了再置成 'failed'
+
     if (wantAi) {
       mode = 'thinking';
       renderAll();
@@ -137,10 +151,10 @@ export function playScene(): Scene {
       if (token !== turnToken || !mounted) return; // 场景已切换或已推进，丢弃这次结果
       if (result.event) {
         event = result.event;
-        lastAiNote = '';
       } else {
-        lastAiNote = result.error ?? '';
-        console.warn('[play] AI 生成失败，降级到内置事件库：', lastAiNote);
+        // 玩家等了一场空，得在回复栏里说清楚"现在用的是内置剧情"
+        builtinReason = 'failed';
+        console.warn('[play] AI 生成失败，降级到内置事件库：', result.error);
       }
     }
 
@@ -528,6 +542,10 @@ export function playScene(): Scene {
         h('p', { class: 'dialog-text', text: lastResultText }),
       ];
 
+      // 同一段剧情的结果页也保留来源提示，免得"这段到底谁写的"在两页之间跳来跳去
+      const resultSourceNote = builtinSourceNote(current);
+      if (resultSourceNote) parts.push(resultSourceNote);
+
       if (resultLines.length > 0) {
         parts.push(
           h(
@@ -612,15 +630,24 @@ export function playScene(): Scene {
       );
     });
 
-    dialogEl.replaceChildren(
+    /*
+     * 来源提示。
+     * AI 写的事件标题旁边有绿色的 AI 角标；内置事件则在这里说清楚，
+     * 尤其是「等过 AI 但没等到」这种情况——玩家白等了一场，得给个交代，
+     * 否则只会以为游戏卡了或者 AI 坏了。
+     */
+    const eventParts: HTMLElement[] = [
       h(
         'div',
         { class: 'dialog-title' },
         h('span', { text: current.title }),
         current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
       ),
-      textEl,
-      choicesEl,
+    ];
+    const sourceNote = builtinSourceNote(current);
+    if (sourceNote) eventParts.push(sourceNote);
+    eventParts.push(textEl, choicesEl);
+    eventParts.push(
       h('p', {
         class: 'dim dialog-hint',
         text: talkTargets.length
@@ -629,7 +656,28 @@ export function playScene(): Scene {
       }),
     );
 
+    dialogEl.replaceChildren(...eventParts);
+
     updateTypedText();
+  }
+
+  /**
+   * 内置剧情的来源提示条。AI 写的事件返回 null（标题旁已经有 AI 角标了）。
+   */
+  function builtinSourceNote(event: GameEvent): HTMLElement | null {
+    if (event.source === 'ai') return null;
+
+    const text =
+      builtinReason === 'failed'
+        ? 'AI 没接上，正在使用内置剧情'
+        : builtinReason === 'unavailable'
+          ? 'AI 暂时不可用，正在使用内置剧情'
+          : '正在使用内置剧情';
+
+    return h('p', {
+      class: `dialog-source ${builtinReason === 'failed' ? 'is-fallback' : ''}`,
+      text,
+    });
   }
 
   function updateTypedText(): void {

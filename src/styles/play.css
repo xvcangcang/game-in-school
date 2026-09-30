@@ -216,6 +216,28 @@
   min-height: 3.4em;
 }
 
+/*
+ * 剧情来源提示条。
+ * AI 写的那段标题旁有绿色 AI 角标；内置的就在正文上方挂这一条。
+ * 尤其是"等过 AI 没等到"的情况要显眼一点（黄色），否则玩家只会以为游戏卡了。
+ */
+.dialog-source {
+  align-self: flex-start;
+  margin: 0;
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  padding: 1px 8px;
+  color: var(--c-text-dim);
+  background: rgba(43, 58, 74, 0.7);
+  border-left: 3px solid var(--c-panel-2);
+}
+
+.dialog-source.is-fallback {
+  color: var(--c-accent);
+  background: rgba(242, 177, 52, 0.12);
+  border-left-color: var(--c-accent);
+}
+
 .dialog-hint {
   margin: 0;
   font-size: 0.68em;
