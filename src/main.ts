@@ -10,6 +10,7 @@ import '@/styles/scenes.css';
 import { Router } from '@/app/router';
 import { initStage } from '@/render/canvas';
 import { bootScene } from '@/scenes/boot';
+import { devArtScene } from '@/scenes/devArt';
 import { menuScene } from '@/scenes/menu';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
@@ -23,9 +24,12 @@ const stage = initStage(canvas, overlay);
 
 const router = new Router(canvas, stage.ctx)
   .register('boot', bootScene)
-  .register('menu', menuScene);
+  .register('menu', menuScene)
+  .register('dev-art', devArtScene);
 
-router.start('boot', overlay);
+// 开发用直达路由：地址栏加 #dev=art 直接进美术预览
+const initialScene = location.hash === '#dev=art' ? 'dev-art' : 'boot';
+router.start(initialScene, overlay);
 
 // 方便在浏览器控制台里调试：window.__game.router / window.__game.stage
 declare global {

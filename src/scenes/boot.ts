@@ -86,6 +86,7 @@ export function bootScene(): Scene {
               .join('')}
           </div>
           <button class="pixel-btn pixel-btn--primary" id="boot-start">开始游戏</button>
+          <button class="pixel-btn" id="boot-art">美术预览（开发用）</button>
           <p class="dim boot-ver">v0.1.0 · M1 核心层</p>
         </div>
       `;
@@ -94,6 +95,7 @@ export function bootScene(): Scene {
       btn?.addEventListener('click', () => {
         ctx.go('menu');
       });
+      ctx.overlay.querySelector('#boot-art')?.addEventListener('click', () => ctx.go('dev-art'));
 
       if (failed.length > 0) {
         console.warn('[boot] 自检未全部通过：', failed);

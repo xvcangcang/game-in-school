@@ -61,3 +61,32 @@
     display: none;
   }
 }
+
+/* ---------- 开发用美术预览 ---------- */
+
+.dev-art-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(13, 17, 23, 0.8);
+  border-top: 2px solid var(--c-panel-2);
+  flex-wrap: wrap;
+}
+
+.dev-art-bar .pixel-btn {
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 0.85em;
+}
+
+.dev-art-name {
+  min-width: 4em;
+  text-align: center;
+  color: var(--c-accent);
+}
