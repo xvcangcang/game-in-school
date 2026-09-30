@@ -13,6 +13,7 @@ import { settingsStore } from '@/app/state';
 import { initStage } from '@/render/canvas';
 import { aboutScene } from '@/scenes/aboutScene';
 import { bootScene } from '@/scenes/boot';
+import { creationScene } from '@/scenes/creation';
 import { devArtScene } from '@/scenes/devArt';
 import { loadScene } from '@/scenes/loadScene';
 import { menuScene } from '@/scenes/menu';
@@ -44,16 +45,8 @@ const router = new Router(canvas, stage.ctx)
   .register('settings', settingsScene)
   .register('about', aboutScene)
   .register('dev-art', devArtScene)
-  // 以下三个是里程碑占位，实现后直接替换注册项即可
-  .register('creation', () =>
-    stubScene({
-      id: 'creation',
-      title: '角色工坊',
-      milestone: 'M4',
-      note: '这里会实现主角创建（姓名/性别/外观/性格）与同学、老师的自定义编辑。',
-      background: 'classroom',
-    }),
-  )
+  .register('creation', creationScene)
+  // 以下两个是里程碑占位，实现后直接替换注册项即可
   .register('play', () =>
     stubScene({
       id: 'play',

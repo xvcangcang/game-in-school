@@ -511,6 +511,236 @@
   }
 }
 
+/* ============================================================
+   角色工坊 / 捏人
+   ============================================================ */
+
+.creation-stack {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 2vw, 14px);
+}
+
+.creation-split {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 1fr;
+  gap: clamp(8px, 2vw, 16px);
+  align-items: start;
+}
+
+.creation-preview-col {
+  position: sticky;
+  top: 0;
+}
+
+.creation-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+/* ---------- 预览 ---------- */
+
+.char-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(13, 17, 23, 0.7);
+  border: 3px solid var(--c-panel-2);
+}
+
+.preview-stage {
+  display: flex;
+  justify-content: center;
+  background: #26343f;
+  border: 2px solid var(--c-panel-2);
+  padding: 4px;
+  width: 100%;
+}
+
+.preview-sprite {
+  image-rendering: pixelated;
+  width: 100%;
+  max-width: 190px;
+  height: auto;
+}
+
+.preview-bust {
+  image-rendering: pixelated;
+  width: 100%;
+  max-width: 120px;
+  height: auto;
+}
+
+.preview-hint {
+  margin: 0;
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- 外观选择器 ---------- */
+
+.appearance-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.appearance-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.appearance-label {
+  font-size: 0.8em;
+  color: var(--c-accent);
+}
+
+.appearance-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.82em;
+  color: var(--c-text);
+  background: rgba(43, 58, 74, 0.9);
+  border: 2px solid var(--c-ink);
+  cursor: pointer;
+}
+
+.opt:hover {
+  background: var(--c-panel-2);
+}
+
+.opt.is-active {
+  border-color: var(--c-accent);
+  background: var(--c-panel-2);
+  color: var(--c-accent);
+}
+
+.opt-swatch {
+  padding: 3px;
+}
+
+.opt-swatch .opt-label {
+  display: none;
+}
+
+.swatch {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--c-ink);
+}
+
+.opt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pixel-textarea {
+  min-height: 70px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+
+/* ---------- 阵容列表 ---------- */
+
+.roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.roster-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: rgba(43, 58, 74, 0.9);
+  border: 2px solid var(--c-ink);
+}
+
+.roster-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.roster-name {
+  color: var(--c-accent);
+  font-size: 0.95em;
+}
+
+.roster-tag {
+  font-size: 0.72em;
+  padding: 1px 6px;
+  border: 1px solid var(--c-panel-2);
+  color: var(--c-text-dim);
+}
+
+.roster-rel {
+  font-size: 0.75em;
+}
+
+.roster-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.roster-actions .pixel-btn {
+  min-height: 34px;
+  padding: 2px 10px;
+  font-size: 0.8em;
+}
+
+/* 捏人页在窄屏上改为上下堆叠 */
+@media (max-width: 639px) {
+  .creation-split {
+    grid-template-columns: 1fr;
+  }
+  .creation-preview-col {
+    position: static;
+  }
+  .char-preview {
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .preview-sprite {
+    max-width: 130px;
+  }
+  .preview-bust {
+    max-width: 80px;
+  }
+}
+
 /* 矮屏（手机横屏）：压缩纵向留白 */
 @media (max-height: 460px) {
   .menu-scene {
