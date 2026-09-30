@@ -6,8 +6,12 @@
  */
 
 import { C, OUTLINE } from '@/render/palette';
+import type { SceneKind } from '@/game/types';
+import { SCENE_KIND_LIST, SCENE_KIND_NAME } from '@/game/types';
 
-export type SceneKind = 'classroom' | 'corridor' | 'playground' | 'cafeteria' | 'home' | 'office';
+// 场景枚举的唯一来源是 game/types.ts（事件数据里也要用），这里只做转出
+export type { SceneKind };
+export { SCENE_KIND_LIST, SCENE_KIND_NAME };
 
 /* ------------------------------------------------------------------ *
  * 通用零件
@@ -302,24 +306,6 @@ const SCENE_PAINTERS: Record<SceneKind, (c: CanvasRenderingContext2D, o: Backgro
     home: (c, o) => drawHome(c, o.night ?? false),
     office: (c) => drawOffice(c),
   };
-
-export const SCENE_KIND_LIST: SceneKind[] = [
-  'classroom',
-  'corridor',
-  'playground',
-  'cafeteria',
-  'home',
-  'office',
-];
-
-export const SCENE_KIND_NAME: Record<SceneKind, string> = {
-  classroom: '教室',
-  corridor: '走廊',
-  playground: '操场',
-  cafeteria: '食堂',
-  home: '家',
-  office: '办公室',
-};
 
 /** 画一整屏背景。画完会补一层夜间压暗（如果启用）。 */
 export function drawBackground(

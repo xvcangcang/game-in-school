@@ -10,7 +10,7 @@
  */
 
 import { loadRoster, saveRoster, resetRoster } from '@/app/roster';
-import { gameStore, settingsStore } from '@/app/state';
+import { gameStore, setActiveSlot, settingsStore } from '@/app/state';
 import type { Scene, SceneContext } from '@/app/router';
 import { C } from '@/render/palette';
 import { drawBackground } from '@/render/tiles';
@@ -600,6 +600,7 @@ export function creationScene(): Scene {
     saveRoster(draft.npcs);
 
     gameStore.set(state);
+    setActiveSlot(1);
     try {
       saveGame(1, state);
       toast?.show('已自动存到存档位 1', 'ok');

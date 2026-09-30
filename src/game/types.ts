@@ -49,6 +49,27 @@ export const SLOT_META: Record<SlotId, { name: string; icon: string }> = {
   evening: { name: '晚自习', icon: '🌙' },
 };
 
+/** 事件发生的场景。渲染层按它选背景图。 */
+export type SceneKind = 'classroom' | 'corridor' | 'playground' | 'cafeteria' | 'home' | 'office';
+
+export const SCENE_KIND_LIST: SceneKind[] = [
+  'classroom',
+  'corridor',
+  'playground',
+  'cafeteria',
+  'home',
+  'office',
+];
+
+export const SCENE_KIND_NAME: Record<SceneKind, string> = {
+  classroom: '教室',
+  corridor: '走廊',
+  playground: '操场',
+  cafeteria: '食堂',
+  home: '家',
+  office: '办公室',
+};
+
 export const DIFFICULTY_META: Record<Difficulty, { name: string; desc: string; badBias: number }> =
   {
     relax: { name: '摆烂模式', desc: '坏事权重降低，属性下滑更慢。', badBias: 0.6 },
@@ -208,7 +229,13 @@ export interface GameEvent {
   id: string;
   source: 'builtin' | 'ai';
   title: string;
-  /** 正文。支持 {主角名} {角色id} 之类的占位符，由 game/text.ts 渲染 */
+  /**
+   * 正文。支持占位符，由 game/text.ts 的 renderTemplate() 统一替换：
+   *   {主角}      → 主角姓名
+   *   {deskmate}  → 角色 id 对应的姓名（如 {npc_deskmate}）
+   *   {属性:study} → 该属性的当前值
+   * **不要在事件里写死角色名**，否则玩家改了名字就会出戏。
+   */
   text: string;
   tone: EventTone;
   /** 权重，越大越容易出现 */
@@ -217,6 +244,8 @@ export interface GameEvent {
   cooldownDays?: number;
   /** 参与角色 id；为空表示纯旁白或只有老师等固定角色 */
   participants?: string[];
+  /** 发生场景，默认教室 */
+  scene?: SceneKind;
   /** 适用学段，留空 = 全部 */
   phase?: PhaseId[];
   /** 适用时段，留空 = 全部 */

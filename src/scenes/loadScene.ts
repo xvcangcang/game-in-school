@@ -12,7 +12,7 @@ import {
   saveGame,
   slotKey,
 } from '@/app/save';
-import { gameStore } from '@/app/state';
+import { gameStore, setActiveSlot } from '@/app/state';
 import type { Scene, SceneContext } from '@/app/router';
 import { C } from '@/render/palette';
 import { drawBackground } from '@/render/tiles';
@@ -177,6 +177,7 @@ function renderSlotRow(
           try {
             const state = loadGame(slot.slot);
             gameStore.set(state);
+            setActiveSlot(slot.slot);
             ctx.go('play');
           } catch (err) {
             alert(`读取失败：${err instanceof Error ? err.message : String(err)}`);

@@ -1,0 +1,321 @@
+/* 游玩场景：顶部状态条 + 画面区 + 底部对话框 */
+
+.play-scene {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+/* ---------------- 顶部状态条 ---------------- */
+
+.play-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 不换行：换行会把「菜单」挤到第二行，状态条高度一变整个布局就跳 */
+  flex-wrap: nowrap;
+  padding: clamp(4px, 1.2vw, 8px) clamp(6px, 2vw, 12px);
+  background: rgba(13, 17, 23, 0.82);
+  border-bottom: 3px solid var(--c-panel-2);
+}
+
+.play-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.play-phase {
+  color: var(--c-accent);
+  font-size: 0.9em;
+}
+
+.play-when {
+  font-size: 0.82em;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
+
+.play-night {
+  font-size: 0.7em;
+  padding: 1px 5px;
+  border: 1px solid var(--c-line);
+  color: var(--c-sky);
+}
+
+.play-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.play-stats::-webkit-scrollbar {
+  display: none;
+}
+
+.stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7em;
+  color: var(--c-text-dim);
+  flex: 0 0 auto;
+}
+
+.stat-name {
+  white-space: nowrap;
+}
+
+/* 窄一点的时候把「老师好感」这类长名换成单字，省出的宽度给属性条 */
+.stat-name-short {
+  display: none;
+}
+
+.stat-bar {
+  display: block;
+  width: 34px;
+  height: 9px;
+  background: #0a0f14;
+  border: 2px solid var(--c-ink);
+}
+
+.stat-fill {
+  display: block;
+  height: 100%;
+}
+
+.stat-value {
+  color: var(--c-text);
+  min-width: 2em;
+  text-align: right;
+}
+
+.play-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.play-who {
+  font-size: 0.72em;
+  color: var(--c-text-dim);
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play-menu-btn {
+  min-height: 34px;
+  padding: 2px 12px;
+  font-size: 0.8em;
+}
+
+/* ---------------- 画面区（Canvas 在背后） ---------------- */
+
+.play-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---------------- 对话框 ---------------- */
+
+.play-dialog {
+  flex: 0 0 auto;
+  max-height: 58%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 clamp(4px, 1.4vw, 10px) clamp(6px, 1.6vw, 12px);
+  padding: clamp(8px, 2vw, 14px);
+  background: rgba(10, 15, 20, 0.94);
+  border: 3px solid var(--c-line);
+  box-shadow: 0 4px 0 0 var(--c-ink);
+}
+
+.dialog-title {
+  color: var(--c-accent);
+  font-size: 1em;
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid var(--c-panel-2);
+  padding-bottom: 4px;
+}
+
+.dialog-title::before {
+  content: '◆ ';
+  color: var(--c-accent-2);
+}
+
+.dialog-text {
+  margin: 0;
+  line-height: 1.75;
+  font-size: 0.95em;
+  min-height: 3.4em;
+}
+
+.dialog-hint {
+  margin: 0;
+  font-size: 0.68em;
+  letter-spacing: 0.02em;
+}
+
+.dialog-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.dialog-choices.is-ready {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.choice-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--c-text);
+  background: rgba(43, 58, 74, 0.92);
+  border: 3px solid var(--c-ink);
+  box-shadow: var(--shadow-pixel);
+  cursor: pointer;
+}
+
+.choice-btn:hover,
+.choice-btn:focus-visible {
+  background: var(--c-panel-2);
+  border-color: var(--c-accent);
+  outline: none;
+}
+
+.choice-btn:active {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+.choice-index {
+  flex: 0 0 auto;
+  width: 1.6em;
+  height: 1.6em;
+  display: grid;
+  place-items: center;
+  font-size: 0.8em;
+  color: var(--c-ink);
+  background: var(--c-accent);
+}
+
+.choice-text {
+  flex: 1 1 auto;
+  font-size: 0.92em;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.delta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.delta {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  border: 2px solid var(--c-ink);
+  background: var(--c-panel);
+}
+
+.delta.is-up {
+  color: var(--c-accent-2);
+  border-color: var(--c-accent-2);
+}
+
+.delta.is-down {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+
+.term-rank {
+  font-size: 1.6em;
+  color: var(--c-accent);
+  text-shadow: 2px 2px 0 var(--c-ink);
+}
+
+/* ---------------- 适配 ---------------- */
+
+/* 竖屏：画面在上方独占一条，对话框直接铺满剩下的空间 */
+#app.is-portrait .play-stage {
+  flex: 0 0 6px;
+}
+
+#app.is-portrait .play-dialog {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+@media (max-width: 1180px) {
+  .stat-name {
+    display: none;
+  }
+  .stat-name-short {
+    display: inline;
+    font-size: 0.95em;
+    color: var(--c-text);
+  }
+}
+
+@media (max-width: 639px) {
+  /* 窄屏允许折成两行：第一行时间 + 菜单，第二行属性条（可横向滑动） */
+  .play-topbar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .play-time {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .play-tools {
+    order: 2;
+  }
+  .play-stats {
+    order: 3;
+    flex: 1 0 100%;
+    padding-bottom: 2px;
+  }
+  .play-who {
+    display: none;
+  }
+  .stat-chip {
+    font-size: 0.66em;
+  }
+  .stat-bar {
+    width: 26px;
+  }
+  .dialog-hint {
+    display: none;
+  }
+}

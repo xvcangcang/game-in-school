@@ -7,6 +7,7 @@
 import '@/styles/global.css';
 import '@/styles/scenes.css';
 import '@/styles/menu.css';
+import '@/styles/play.css';
 
 import { Router } from '@/app/router';
 import { settingsStore } from '@/app/state';
@@ -18,6 +19,7 @@ import { devArtScene } from '@/scenes/devArt';
 import { loadScene } from '@/scenes/loadScene';
 import { menuScene } from '@/scenes/menu';
 import { newGameScene } from '@/scenes/newGameScene';
+import { playScene } from '@/scenes/play';
 import { settingsScene } from '@/scenes/settingsScene';
 import { stubScene } from '@/scenes/stubs';
 
@@ -46,17 +48,7 @@ const router = new Router(canvas, stage.ctx)
   .register('about', aboutScene)
   .register('dev-art', devArtScene)
   .register('creation', creationScene)
-  // 以下两个是里程碑占位，实现后直接替换注册项即可
-  .register('play', () =>
-    stubScene({
-      id: 'play',
-      title: '校园生活',
-      milestone: 'M5',
-      note: '这里会实现时段推进、随机事件、选择与结算的完整游玩循环。',
-      background: 'classroom',
-      backTo: 'menu',
-    }),
-  )
+  .register('play', playScene)
   .register('gallery', () =>
     stubScene({
       id: 'gallery',
