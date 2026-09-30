@@ -298,6 +298,8 @@
   min-width: 88px;
   min-height: 40px;
   flex: 0 0 auto;
+  /* 放进 createField 时父级是纵向 flex，按钮会被拉满整行，这里收住 */
+  align-self: flex-start;
 }
 
 .pixel-toggle.is-on {

@@ -430,6 +430,14 @@ export interface AiConfig {
   temperature: number;
   /** 单次请求超时（毫秒） */
   timeoutMs: number;
+  /**
+   * 关掉模型的「思考」过程（对支持该参数的服务商有效）。
+   *
+   * 为什么重要：实测 deepseek-flash 生成一段剧情要 ~780 输出 token，其中 **60% 是思考 token**，
+   * 而输出比输入贵——关掉之后同样一段剧情便宜一大截。
+   * 代价是复杂剧情的质量会略降，所以做成开关。
+   */
+  disableThinking: boolean;
 }
 
 export interface Settings {

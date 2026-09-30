@@ -25,6 +25,9 @@ export function defaultAiConfig(): AiConfig {
     useProxy: true,
     temperature: 0.9,
     timeoutMs: 8000,
+    // 默认关掉思考：实测能砍掉六成输出 token，而官方内置事件库兜底，
+    // 质量略降也吃得消。觉得剧情变差可以关掉这个开关。
+    disableThinking: true,
   };
 }
 

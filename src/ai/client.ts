@@ -103,6 +103,81 @@ export function aiReadyForAttempt(): boolean {
   return aiConfigured() && !aiCircuitOpen();
 }
 
+/* ------------------------------------------------------------------ *
+ * 用量统计
+ * ------------------------------------------------------------------ *
+ * 起因：玩家反馈"token 消耗有点快"。光看提示词代码估不准（中文一个字大概就是一个 token，
+ * 但角色列表、历史记录这些是随存档变化的），所以把上游返回的 usage 记下来，
+ * 用真实数字决定该砍哪里。
+ *
+ * 顺带记 prompt_cache_hit_tokens：DeepSeek 这类服务会对**相同前缀**做缓存，
+ * system 提示词每次一样就能命中，命中部分便宜很多。
+ * 所以"砍提示词"要优先砍每次都不一样的那部分（角色列表、最近剧情），而不是 system。
+ */
+
+export interface AiUsageStats {
+  calls: number;
+  /** 输入 token 总数 */
+  promptTokens: number;
+  /** 其中命中缓存的部分 */
+  cachedTokens: number;
+  /** 输出 token 总数 */
+  completionTokens: number;
+  /** 输出里属于"模型思考"的部分（有些服务会单独返回，按输出价计费） */
+  reasoningTokens: number;
+}
+
+const usageTotals: AiUsageStats = {
+  calls: 0,
+  promptTokens: 0,
+  cachedTokens: 0,
+  completionTokens: 0,
+  reasoningTokens: 0,
+};
+
+function recordUsage(raw: unknown): void {
+  if (typeof raw !== 'object' || raw === null) return;
+  const u = raw as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
+  const completionDetails = (u.completion_tokens_details ?? {}) as Record<string, unknown>;
+
+  usageTotals.calls += 1;
+  usageTotals.promptTokens += num(u.prompt_tokens);
+  usageTotals.completionTokens += num(u.completion_tokens);
+  usageTotals.cachedTokens += num(u.prompt_cache_hit_tokens);
+  usageTotals.reasoningTokens += num(completionDetails.reasoning_tokens);
+}
+
+export function aiUsageStats(): AiUsageStats & {
+  avgPromptTokens: number;
+  avgCompletionTokens: number;
+  avgReasoningTokens: number;
+  cacheHitRate: number;
+} {
+  const c = Math.max(1, usageTotals.calls);
+  return {
+    ...usageTotals,
+    avgPromptTokens: Math.round(usageTotals.promptTokens / c),
+    avgCompletionTokens: Math.round(usageTotals.completionTokens / c),
+    avgReasoningTokens: Math.round(usageTotals.reasoningTokens / c),
+    cacheHitRate: Number(
+      (usageTotals.promptTokens > 0
+        ? usageTotals.cachedTokens / usageTotals.promptTokens
+        : 0
+      ).toFixed(3),
+    ),
+  };
+}
+
+export function resetAiUsage(): void {
+  usageTotals.calls = 0;
+  usageTotals.promptTokens = 0;
+  usageTotals.cachedTokens = 0;
+  usageTotals.completionTokens = 0;
+  usageTotals.reasoningTokens = 0;
+}
+
 function endpointOf(cfg: AiConfig): string {
   return `${cfg.baseURL.replace(/\/+$/, '')}/chat/completions`;
 }
@@ -137,6 +212,8 @@ export async function chat(options: ChatOptions): Promise<string> {
           temperature: options.temperature ?? cfg.temperature,
           model: cfg.model,
           json: options.json ?? false,
+          // 关掉思考能砍掉六成输出 token，见 AiConfig.disableThinking
+          ...(cfg.disableThinking === false ? {} : { reasoning_effort: 'none' }),
         }),
         signal: controller.signal,
       });
@@ -165,6 +242,7 @@ export async function chat(options: ChatOptions): Promise<string> {
 
       // 注意：本站代理返回的是已经规整过的 { content }，
       // 不是 OpenAI 原始的 choices[0].message.content，两者不能混用。
+      recordUsage((payload as { usage?: unknown }).usage);
       const content = (payload as { content?: unknown }).content;
       if (typeof content !== 'string' || !content.trim()) {
         throw new AiError('BAD_RESPONSE', '代理返回里没有 content 字段');
@@ -188,6 +266,7 @@ export async function chat(options: ChatOptions): Promise<string> {
         messages: options.messages,
         temperature: options.temperature ?? cfg.temperature,
         ...(options.json ? { response_format: { type: 'json_object' } } : {}),
+        ...(cfg.disableThinking === false ? {} : { reasoning_effort: 'none' }),
       }),
       signal: controller.signal,
     });
@@ -210,6 +289,7 @@ export async function chat(options: ChatOptions): Promise<string> {
       throw new AiError(res.status === 401 ? 'NO_KEY' : 'UPSTREAM', msg);
     }
 
+    recordUsage((payload as { usage?: unknown }).usage);
     return extractContent(payload);
   } catch (err) {
     if (err instanceof AiError) {

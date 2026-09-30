@@ -9,11 +9,12 @@
 
 import { describeCharacter, relationLabel } from '@/game/character';
 import { npcs } from '@/game/character';
+import { personalityMeta } from '@/data/personalities';
 import { describeTime } from '@/game/schedule';
 import { slotIdAt } from '@/game/conditions';
 import { renderTemplate } from '@/game/text';
 import type { DailySummary } from '@/game/dailySummary';
-import type { GameState, StatKey } from '@/game/types';
+import type { Character, GameState, StatKey } from '@/game/types';
 import { PHASE_META, SLOT_META, STAT_META } from '@/game/types';
 import type { ChatMessage } from '@/ai/client';
 
@@ -21,28 +22,28 @@ import type { ChatMessage } from '@/ai/client';
  * 事件生成
  * ------------------------------------------------------------------ */
 
-export const EVENT_SYSTEM_PROMPT = `你是一个中国初中校园题材文字游戏的剧情编剧。玩家扮演一名初中生，游戏按时段推进，每个时段发生一件小事。
+export const EVENT_SYSTEM_PROMPT = `你是中国初中校园题材文字游戏的编剧。玩家扮演一名初中生，游戏按时段推进，每个时段发生一件小事。
 
 【硬性要求】
-1. 只写校园日常：上课、作业、考试、同学关系、老师、家长、社团、值日、运动会、食堂、放学路上……
-2. 所有出场角色都是初中生、老师或家长。**禁止**任何恋爱露骨描写、暴力、自伤、抽烟喝酒、欺凌细节、作弊教学、违法犯罪内容。青春期的别扭和心跳可以写，但要克制、健康。
-3. 写具体、有画面感的细节。写「粉笔灰在阳光里飘」，不要写「老师很生气」。
-4. 正文 40~90 字，1~3 句。标题 8 字以内。
-5. 2~4 个选项，选项文字 6~16 字，选项之间要有**真实取舍**（不能全是好事，也不能全是坏事）。
-6. 正文里称呼主角用占位符 {主角}，称呼在场角色用 {角色id}（例如 {npc_deskmate}）。不要写死姓名。
-7. **只输出 JSON**，不要解释、不要 markdown 代码块、不要多余文字。
+1. 只写校园日常：上课、作业、考试、同学关系、老师、家长、社团、值日、食堂、放学路上。
+2. 出场角色都是初中生、老师或家长。禁止恋爱露骨、暴力、自伤、抽烟喝酒、欺凌细节、作弊教学、违法内容。青春期的心事可以写，但要克制健康。
+3. 写具体细节，别写结论。写「粉笔灰在阳光里飘」，不写「老师很生气」。
+4. 正文 40~90 字，1~3 句；标题 8 字以内。
+5. 2~4 个选项，每个 6~16 字，选项之间要有真实取舍，不能全是好事或全是坏事。
+6. 正文提到主角写 {主角}，提到在场角色写他们的 id，例如 {npc_deskmate}。不要写死姓名。
+7. 只输出 JSON，不要解释、不要 markdown 代码块。
 
 【输出结构】
 {
   "title": "标题",
-  "text": "正文，可用 {主角} 与 {角色id} 占位符",
+  "text": "正文，用 {主角} / {角色id} 占位符",
   "tone": "good" | "bad" | "neutral",
   "scene": "classroom" | "corridor" | "playground" | "cafeteria" | "home" | "office",
-  "participants": ["角色id"],
+  "participants": ["角色id（只写配角，不要写主角）"],
   "choices": [
     {
       "text": "选项文字",
-      "resultText": "选完后立刻看到的一句话反馈",
+      "resultText": "选完后一句反馈",
       "effects": {
         "stats": { "study": 4, "stamina": -3 },
         "relations": { "角色id": -5 },
@@ -53,50 +54,57 @@ export const EVENT_SYSTEM_PROMPT = `你是一个中国初中校园题材文字�
 }
 
 【数值规则】
-- stats 只能用这些键：study(学业) stamina(体力) mood(心态) popularity(人气) teacherFavor(老师好感) familyExpect(家庭期望) money(零花钱)
-- 每个数值的绝对值不超过 15；money 不超过 30
-- relations 的键必须是 participants 里出现过的角色 id，绝对值不超过 15
-- 大多数选项只影响 1~3 项数值，不要每个选项都改一大堆
-- flags 可以留空数组，也可以写一个蛇形命名的小标记`;
+- stats 的键只能是：study(学业) stamina(体力) mood(心态) popularity(人气) teacherFavor(老师好感) familyExpect(家庭期望) money(零花钱)
+- 单项绝对值 ≤15，money ≤30；relations 的键必须是给定角色 id，绝对值 ≤15
+- 多数选项只动 1~3 项，别每个选项都改一大堆；flags 可留空数组`;
+
+/**
+ * 角色列表的紧凑写法。
+ *
+ * 原来每人一句 `describeCharacter()`：身份提示 + 性格标签 + 人设 + 设定 + 好感分级，
+ * 6 个人就是 600 多字，占了输入的一大半。而其中「同班同学，关系普通」「自来熟、消息灵通」
+ * 这类**通用说明**对模型没有增量信息——它本来就知道「同桌」「社牛」是什么意思。
+ * 所以这里只留**这个人独有**的东西：id、名字、身份、性格、好感、人设/设定（截断）。
+ */
+function compactCharacter(c: Character): string {
+  const bits = [c.id, c.name, c.title ?? '', personalityMeta(c.personality).name];
+  const flavor = (c.setting || c.bio || '').trim().replace(/\s+/g, ' ').slice(0, 26);
+  const rel = relationLabel(c.relation).name;
+  return `${bits.filter(Boolean).join(' ')} 好感${c.relation}(${rel})${flavor ? ` ${flavor}` : ''}`;
+}
 
 /** 把当前局面整理成模型能读的上下文 */
 export function buildEventUserPrompt(state: GameState): string {
   const protagonist = state.characters.find((c) => c.isProtagonist);
   const roster = [protagonist, ...npcs(state)]
     .filter((c): c is NonNullable<typeof c> => Boolean(c))
-    .map((c) => `- ${c.id}：${describeCharacter(c)}`)
+    .map((c) => `- ${compactCharacter(c)}`)
     .join('\n');
 
+  // 最近 3 段就够接着写了。原来列 5 段，又把标题单独列 8 个，等于说两遍。
   const recent = state.history
-    .slice(-5)
-    .map((h) => `- 第${h.day}天 ${SLOT_META[h.slot].name}：${h.title}（玩家选了「${h.choiceText}」）`)
+    .slice(-3)
+    .map((h) => `- ${SLOT_META[h.slot].name}：${h.title}（选了「${h.choiceText}」）`)
     .join('\n');
+  const recentTitles = state.history.slice(-6).map((h) => h.title);
 
   const statLines = (Object.keys(STAT_META) as StatKey[])
-    .map((k) => `${STAT_META[k].name} ${state.stats[k]}`)
-    .join(' · ');
+    .map((k) => `${STAT_META[k].name}${state.stats[k]}`)
+    .join(' ');
 
-  const recentTitles = state.history.slice(-8).map((h) => h.title);
-
-  return `【当前局面】
-学段：${PHASE_META[state.phase].name}（${PHASE_META[state.phase].subtitle}）
-时间：${describeTime(state)}
-难度：${state.difficulty === 'hard' ? '课业压力很大' : state.difficulty === 'relax' ? '比较轻松' : '普通'}
+  return `${PHASE_META[state.phase].name}｜${describeTime(state)}｜${
+    state.difficulty === 'hard' ? '压力很大' : state.difficulty === 'relax' ? '比较轻松' : '普通'
+  }
 属性：${statLines}
 
-【主角】
-${protagonist ? `${protagonist.id}：${describeCharacter(protagonist)}` : '（无）'}
-
-【在场可用的角色】（participants 只能从这里挑，也可以用空数组表示纯旁白）
+主角：${protagonist ? compactCharacter(protagonist) : '（无）'}
+可出场角色（participants 只能从这里挑，也可以空数组表示旁白）：
 ${roster}
 
-【最近发生的事】
-${recent || '（这是开局第一个时段）'}
+最近：${recent || '（开局第一个时段）'}
+别重复这些标题：${recentTitles.length ? recentTitles.join('、') : '（无）'}
 
-【不要重复这些已经出现过的事件标题】
-${recentTitles.length ? recentTitles.join('、') : '（无）'}
-
-请生成「${SLOT_META[slotIdAt(state.slotIndex)].name}」这段时间里发生的一件小事。只输出 JSON。`;
+生成「${SLOT_META[slotIdAt(state.slotIndex)].name}」的一件小事。只输出 JSON。`;
 }
 
 /** 重试时用的提示词：把上一次的失败原因也告诉模型 */

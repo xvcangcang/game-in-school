@@ -8,6 +8,7 @@
  */
 
 import { pingAi } from '@/ai/chat';
+import { aiUsageStats, resetAiUsage } from '@/ai/client';
 import { settingsStore } from '@/app/state';
 import { applySfxSetting, playAllSfx } from '@/ui/audio';
 import type { Scene, SceneContext } from '@/app/router';
@@ -43,6 +44,8 @@ const PRESET_PROVIDERS = [
 
 export function settingsScene(): Scene {
   let toast: ToastHandle | null = null;
+  /** 需要在场景卸载时执行的清理（定时器之类），避免它们跟着场景一直跑 */
+  const pendingCleanups: (() => void)[] = [];
 
   const patch = (fn: (s: Settings) => Settings): void => {
     settingsStore.set(fn(settingsStore.get()));
@@ -242,6 +245,22 @@ export function settingsScene(): Scene {
                 control: keyInput,
               }),
               createField({
+                label: '省 token',
+                hint: '关掉模型的思考过程',
+                control: createToggle(
+                  s.ai.disableThinking !== false,
+                  (v) => patch((cur) => ({ ...cur, ai: { ...cur.ai, disableThinking: v } })),
+                  ['关思考', '让它想'],
+                ),
+              }),
+              h('p', {
+                class: 'dim small-note',
+                text:
+                  s.ai.disableThinking !== false
+                    ? '实测一段剧情的输出里有六成是「思考」token，关掉能省一大笔。剧情质量略降，但没接上时还有内置事件库兜底。'
+                    : '开着思考，剧情更稳，但每段要贵不少。',
+              }),
+              createField({
                 label: '创造性',
                 hint: '越高剧情越野',
                 control: createSlider(
@@ -265,6 +284,51 @@ export function settingsScene(): Scene {
                   (v) => `${(v / 1000).toFixed(0)} 秒`,
                 ),
               }),
+              h(
+                'div',
+                { class: 'row-inline' },
+                (() => {
+                  const usageText = h('span', { class: 'dim small-note' });
+                  const refreshUsage = (): void => {
+                    const u = aiUsageStats();
+                    usageText.textContent =
+                      u.calls === 0
+                        ? '本次会话还没调用过 AI。'
+                        : `本次会话：${u.calls} 次调用 · 输入 ${u.promptTokens}（缓存命中 ${Math.round(
+                            u.cacheHitRate * 100,
+                          )}%）· 输出 ${u.completionTokens}（思考 ${u.reasoningTokens}）· 平均每次 ${u.avgPromptTokens}+${u.avgCompletionTokens} token`;
+                  };
+                  refreshUsage();
+
+                  const timer = window.setInterval(refreshUsage, 1500);
+                  // 场景卸载时清掉，别让定时器跟着跑
+                  pendingCleanups.push(() => window.clearInterval(timer));
+
+                  return h(
+                    'div',
+                    { class: 'form-section' },
+                    h('h3', { class: 'section-title', text: '用量' }),
+                    usageText,
+                    h(
+                      'div',
+                      { class: 'row-inline' },
+                      h('button', {
+                        class: 'pixel-btn',
+                        type: 'button',
+                        text: '重置统计',
+                        onClick: () => {
+                          resetAiUsage();
+                          refreshUsage();
+                        },
+                      }),
+                      h('span', {
+                        class: 'dim small-note',
+                        text: '按上游返回的真实 usage 统计，只算本次打开页面之后的。',
+                      }),
+                    ),
+                  );
+                })(),
+              ),
               h(
                 'div',
                 { class: 'row-inline' },
@@ -298,6 +362,7 @@ export function settingsScene(): Scene {
     unmount(): void {
       toast?.destroy();
       toast = null;
+      for (const cleanup of pendingCleanups.splice(0)) cleanup();
     },
 
     render(c: CanvasRenderingContext2D): void {

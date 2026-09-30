@@ -637,6 +637,9 @@ export function playScene(): Scene {
     const talkTargets = (current.participants ?? [])
       .map((id) => s.characters.find((c) => c.id === id))
       .filter((c): c is NonNullable<typeof c> => Boolean(c))
+      // 主角自己不用出现在「说话」列表里——跟自己聊天没有意义。
+      // AI 偶尔会把主角也写进 participants，这里兜住。
+      .filter((c) => !c.isProtagonist)
       .slice(0, 3);
 
     talkTargetsRef = talkTargets.map((c) => ({ id: c.id, name: c.name }));

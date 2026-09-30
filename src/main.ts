@@ -11,7 +11,7 @@ import '@/styles/play.css';
 
 import { Router } from '@/app/router';
 import { settingsStore } from '@/app/state';
-import { resetAiBreaker } from '@/ai/client';
+import { resetAiBreaker, aiUsageStats, resetAiUsage } from '@/ai/client';
 import { initStage } from '@/render/canvas';
 import { aboutScene } from '@/scenes/aboutScene';
 import { bootScene } from '@/scenes/boot';
@@ -86,6 +86,8 @@ declare global {
       sfx: typeof sfx;
       audioStats: typeof audioStatsSnapshot;
       resetAudioStats: typeof resetAudioStats;
+      aiUsage: typeof aiUsageStats;
+      resetAiUsage: typeof resetAiUsage;
     };
   }
 }
@@ -95,4 +97,7 @@ window.__game = {
   sfx,
   audioStats: audioStatsSnapshot,
   resetAudioStats,
+  // 调试用：window.__game.aiUsage() 看这次会话烧了多少 token
+  aiUsage: aiUsageStats,
+  resetAiUsage,
 };

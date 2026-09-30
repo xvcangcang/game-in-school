@@ -175,7 +175,7 @@ async function handleLlm(req, res) {
     return;
   }
 
-  const { messages, temperature = 0.9, model, json: wantJson } = payload ?? {};
+  const { messages, temperature = 0.9, model, json: wantJson, reasoning_effort: reasoningEffort } = payload ?? {};
   if (!Array.isArray(messages) || messages.length === 0) {
     json(res, 400, { error: 'messages 不能为空' });
     return;
@@ -196,6 +196,9 @@ async function handleLlm(req, res) {
         messages,
         temperature,
         ...(wantJson ? { response_format: { type: 'json_object' } } : {}),
+        // 透传「关掉思考」的请求（前端设置里的「省 token」开关）。
+        // 只有前端明确传了才带上去，免得在不支持的服务商那里报 400。
+        ...(typeof reasoningEffort === 'string' ? { reasoning_effort: reasoningEffort } : {}),
       }),
       signal: controller.signal,
     });
