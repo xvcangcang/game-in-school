@@ -65,18 +65,19 @@ export function settingsScene(): Scene {
       const DIRECT_HINT =
         '浏览器直接连模型接口，需要你自己填一个 Key（只存在这台机器上）。纯静态部署或自测时用。';
 
-      // 先建 Key 输入框，因为连接方式的切换要同步它的可用状态
+      /*
+       * API Key 输入框**永远可填**，不做禁用。
+       *
+       * 之前走代理时会把它灰掉，结果玩家根本没法粘贴自己的 Key，只会以为"输入框坏了"。
+       * 而且灰掉在功能上也是错的：代理模式下一旦填了 Key，前端会把它作为 x-llm-key
+       * 发出去，服务端优先用它（见 server/index.mjs 的 handleLlm）。
+       * 所以正确的说法是「留空就用开发者的，填了就用你的」，而不是「不许填」。
+       */
       const keyInput = createTextInput(
         s.ai.apiKey,
         (v) => patch((cur) => ({ ...cur, ai: { ...cur.ai, apiKey: v.trim() } })),
-        { type: 'password', placeholder: 'sk-...（选「自备 Key」时才需要）', maxLength: 200 },
+        { type: 'password', placeholder: 'sk-...（留空则用开发者提供的）', maxLength: 200 },
       );
-
-      /** 走代理时 Key 在服务器上，输入框没有意义；自备 Key 时才要能填 */
-      const syncKeyInputState = (useProxy: boolean): void => {
-        keyInput.disabled = useProxy;
-      };
-      syncKeyInputState(s.ai.useProxy);
 
       const proxyHint = h('p', {
         class: 'dim small-note',
@@ -88,7 +89,6 @@ export function settingsScene(): Scene {
         (v) => {
           patch((cur) => ({ ...cur, ai: { ...cur.ai, useProxy: v } }));
           proxyHint.textContent = v ? PROXY_HINT : DIRECT_HINT;
-          syncKeyInputState(v);
         },
         ['开发者请客', '自备 Key'],
       );
@@ -238,7 +238,7 @@ export function settingsScene(): Scene {
               }),
               createField({
                 label: 'API Key',
-                hint: '开发者请客时留空即可',
+                hint: '留空就用开发者提供的；填了就用你自己的',
                 control: keyInput,
               }),
               createField({
