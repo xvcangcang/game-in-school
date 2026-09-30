@@ -42,10 +42,16 @@ try {
   const errors = [];
   /** 网络层的 404/503 属于「可预期的降级」（比如服务端没配 Key），单独统计，不算失败 */
   const networkNoise = [];
+  /** AI 校验失败 / 降级的警告，单独统计——它不代表游戏坏了，但值得知道比率 */
+  const aiWarnings = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => {
-    if (m.type() !== 'error') return;
     const text = m.text();
+    if (m.type() === 'warning' && text.includes('[ai]')) {
+      aiWarnings.push(text);
+      return;
+    }
+    if (m.type() !== 'error') return;
     if (text.includes('favicon')) return;
     if (/Failed to load resource/.test(text)) {
       networkNoise.push(text);
@@ -89,10 +95,10 @@ try {
     const titles = [];
 
     for (let t = 0; t < maxTurns; t++) {
-      // 等打字机跑完（instant 模式下基本立刻就好）
+      // 等打字机跑完；开了真 AI 时每次要等模型返回，所以给足 20 秒
       let guard = 0;
-      while (guard++ < 60 && !document.querySelector('.dialog-choices.is-ready .choice-btn')) {
-        await sleep(20);
+      while (guard++ < 400 && !document.querySelector('.dialog-choices.is-ready .choice-btn')) {
+        await sleep(50);
       }
 
       const buttons = document.querySelectorAll('.dialog-choices .choice-btn');
@@ -168,6 +174,14 @@ try {
 
   if (networkNoise.length) {
     console.log(`网络降级次数：${networkNoise.length}（多数是服务端没配 Key 时的 503，属正常降级）`);
+  }
+
+  if (aiWarnings.length) {
+    console.log(`AI 生成告警：${aiWarnings.length} 条`);
+    const uniq = [...new Set(aiWarnings.map((w) => w.replace(/^.*\[ai\]\s*/, '').slice(0, 90)))];
+    for (const w of uniq.slice(0, 6)) console.log('  · ' + w);
+  } else {
+    console.log('AI 生成告警：0（或因未启用 AI）');
   }
 
   if (errors.length) {

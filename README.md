@@ -28,10 +28,15 @@ npm run server                        # http://127.0.0.1:8787
 
 ```
 LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-flash
 LLM_API_KEY=sk-你的密钥
 PORT=8787
 ```
+
+> 模型名会变。DeepSeek 现在只提供 `deepseek-flash`（便宜）和 `deepseek-v4-pro`，
+> 老的 `deepseek-chat` 已经查不到。想知道当前有哪些，直接问接口：
+> `curl -H "Authorization: Bearer $KEY" https://api.deepseek.com/models`，
+> 或者在游戏内「设置 → AI 剧情 → 模型名」里改。
 
 **为什么要有服务端**：把 Key 写进网页等于公开。有了这一层，同学打开网址就能直接玩，
 不用自己申请 Key，你的 Key 也不会出现在任何人的浏览器里。

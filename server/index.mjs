@@ -12,7 +12,7 @@
  *   node server/index.mjs
  * 环境变量（或 server/.env.local）：
  *   LLM_BASE_URL   例如 https://api.deepseek.com/v1
- *   LLM_MODEL      例如 deepseek-chat
+ *   LLM_MODEL      例如 deepseek-flash
  *   LLM_API_KEY    服务端持有的密钥
  *   PORT           默认 8787
  *   DIST_DIR       默认 ../dist
@@ -152,7 +152,7 @@ function json(res, status, payload) {
 async function handleLlm(req, res) {
   const apiKey = env('LLM_API_KEY');
   const baseURL = env('LLM_BASE_URL', 'https://api.deepseek.com/v1');
-  const defaultModel = env('LLM_MODEL', 'deepseek-chat');
+  const defaultModel = env('LLM_MODEL', 'deepseek-flash');
 
   // 前端也可以自带 Key（开发者自测 / 纯静态部署时用），带上就优先用它
   const clientKey = req.headers['x-llm-key'];
@@ -266,7 +266,7 @@ const server = createServer(async (req, res) => {
       ok: true,
       hasKey: Boolean(env('LLM_API_KEY')),
       baseURL: env('LLM_BASE_URL', 'https://api.deepseek.com/v1'),
-      model: env('LLM_MODEL', 'deepseek-chat'),
+      model: env('LLM_MODEL', 'deepseek-flash'),
       distReady: existsSync(DIST_DIR),
     });
     return;
@@ -287,7 +287,7 @@ server.listen(PORT, () => {
   console.log(`  静态目录：${DIST_DIR}${existsSync(DIST_DIR) ? '' : '（不存在，先 npm run build）'}`);
   console.log(
     hasKey
-      ? `  AI 代理：已配置（${env('LLM_BASE_URL', 'https://api.deepseek.com/v1')} / ${env('LLM_MODEL', 'deepseek-chat')}）`
+      ? `  AI 代理：已配置（${env('LLM_BASE_URL', 'https://api.deepseek.com/v1')} / ${env('LLM_MODEL', 'deepseek-flash')}）`
       : '  AI 代理：未配置 Key，前端会自动降级到本地事件库（在 .env.local 里配 LLM_API_KEY 即可开启）',
   );
 });

@@ -34,7 +34,7 @@ const TEXT_SPEEDS: { value: Settings['textSpeed']; label: string }[] = [
 ];
 
 const PRESET_PROVIDERS = [
-  { label: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { label: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-flash' },
   { label: 'OpenAI', baseURL: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   { label: 'Moonshot', baseURL: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
   { label: '本地 Ollama', baseURL: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:7b' },
@@ -191,7 +191,7 @@ export function settingsScene(): Scene {
                 control: createTextInput(
                   s.ai.model,
                   (v) => patch((cur) => ({ ...cur, ai: { ...cur.ai, model: v.trim() } })),
-                  { placeholder: 'deepseek-chat', maxLength: 100 },
+                  { placeholder: 'deepseek-flash', maxLength: 100 },
                 ),
               }),
               createField({

@@ -9,14 +9,18 @@ export const SETTINGS_KEY = 'cps:settings';
 export const SETTINGS_VERSION = 1;
 
 /**
- * 默认 AI 配置：默认走同源代理（Key 放服务端 .env，前端不暴露），
+ * 默认 AI 配置：默认走同源代理（Key 放服务端 .env.local，前端不暴露），
  * 这样同学直接用网址就能玩。开发者想直连自测，把 useProxy 关掉再填 Key 即可。
+ *
+ * 注意模型名会变。DeepSeek 2026 年只提供 `deepseek-flash`（便宜）和 `deepseek-v4-pro`，
+ * 老的 `deepseek-chat` 已经查不到了。想知道当前有哪些，直接问接口：
+ *   curl -H "Authorization: Bearer $KEY" https://api.deepseek.com/models
  */
 export function defaultAiConfig(): AiConfig {
   return {
     enabled: true,
     baseURL: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     apiKey: '',
     useProxy: true,
     temperature: 0.9,
