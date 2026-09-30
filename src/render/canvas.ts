@@ -24,6 +24,10 @@ export function initStage(canvas: HTMLCanvasElement, overlay: HTMLElement): Stag
   canvas.height = STAGE_H;
   ctx.imageSmoothingEnabled = false;
 
+  // overlay 不再跟着画布缩放，它铺满视口；这里只负责摆好画布
+  void overlay;
+  const app = canvas.parentElement;
+
   let lastW = -1;
   let lastH = -1;
 
@@ -38,15 +42,18 @@ export function initStage(canvas: HTMLCanvasElement, overlay: HTMLElement): Stag
       lastH = availH;
 
       const raw = Math.min(availW / STAGE_W, availH / STAGE_H);
-      // 空间够就取整数倍，像素绝对干净；手机竖屏不够 1 倍时退化为小数倍
-      const scale = raw >= 1 ? Math.floor(raw) : raw;
+      // 空间够就取整数倍，像素绝对干净；不够 2 倍（手机）时退化为小数倍，优先占满屏幕
+      const scale = raw >= 2 ? Math.floor(raw) : raw;
       const cssW = Math.max(1, Math.round(STAGE_W * scale));
       const cssH = Math.max(1, Math.round(STAGE_H * scale));
 
       canvas.style.width = `${cssW}px`;
       canvas.style.height = `${cssH}px`;
-      overlay.style.width = `${cssW}px`;
-      overlay.style.height = `${cssH}px`;
+      // 供 CSS 使用：竖屏时界面要避开画布占掉的那条带
+      document.documentElement.style.setProperty('--stage-h', `${cssH}px`);
+
+      // 竖屏 / 方屏：画布贴顶，界面用下方空间
+      app?.classList.toggle('is-portrait', availW / availH < 1.2);
     },
   };
 

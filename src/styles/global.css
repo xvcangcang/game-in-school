@@ -23,7 +23,8 @@
   /* 字体：优先像素中文字体，逐级回退，布局不塌 */
   --font-pixel: 'Zpix', 'Fusion Pixel 12px', 'SG Pixel', 'Fusion Pixel', 'Microsoft YaHei',
     'PingFang SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-size-base: clamp(13px, 3.6vw, 17px);
+  /* 字号跟着视口长宽一起走，手机上不会太小、大屏上不会太小 */
+  --font-size-base: calc(clamp(13px, 1.5vw + 1.2vh, 20px) * var(--ui-scale, 1));
 
   /* 像素风统一的硬边框，不用圆角、不用渐变阴影 */
   --border-pixel: 3px solid var(--c-ink);
@@ -37,7 +38,7 @@
 
 @media (min-width: 1024px) {
   :root {
-    --font-size-base: 17px;
+    --font-size-base: calc(clamp(15px, 1.2vw + 0.6vh, 20px) * var(--ui-scale, 1));
   }
 }
 
@@ -64,35 +65,53 @@ body {
   user-select: none;
 }
 
-/* ---------- 应用外壳：Canvas 与 DOM 覆盖层叠加 ---------- */
+/* ---------- 应用外壳 ----------
+   画面层（Canvas）和文字层（DOM）**解耦**：
+   Canvas 按 16:9 等比缩放并居中/靠上，DOM 覆盖层始终铺满整个视口。
+   这样竖屏手机上不会出现「UI 被压在 219px 高的画面里」的问题。 */
 
 #app {
   position: fixed;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
+  background: var(--c-void);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
 }
 
-/* 画布本体：内部分辨率固定 320×180，靠 CSS 整数倍放大 */
+/* 画布本体：内部分辨率固定 320×180，靠 CSS 缩放 */
 #stage {
   position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: var(--c-bg);
   touch-action: none;
 }
 
-/* 文本层：默认不吃点击，只有可交互元素单独打开 */
+/* 竖屏时贴顶，把下面的空间留给界面 */
+#app.is-portrait #stage {
+  top: 0;
+  transform: translateX(-50%);
+}
+
+/* 文字层：铺满视口，默认不吃点击，只有可交互元素单独打开 */
 #overlay {
   position: absolute;
+  inset: 0;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 竖屏：画布贴顶占了一条带，界面从它下面开始。
+   注意必须作用在 .scene-overlay 上：它是绝对定位的，inset:0 会覆盖 #overlay 的 padding，
+   只在 #overlay 上加 padding 是没用的。 */
+#app.is-portrait .scene-overlay {
+  padding-top: calc(var(--stage-h, 0px) + 4px);
 }
 
 #overlay .interactive,
