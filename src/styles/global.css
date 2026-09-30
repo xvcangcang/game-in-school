@@ -1,0 +1,188 @@
+/* ============================================================
+   全局变量与基础样式
+   —— 调色板是像素美术的唯一起源，render/palette.ts 里的十六进制值
+      必须与这里保持同步。改色请两边一起改。
+   ============================================================ */
+
+:root {
+  /* 像素调色板（16 色，参考 PICO-8 / Endesga 风格，自行调过） */
+  --c-void: #0d1117;
+  --c-bg: #1b2430;
+  --c-panel: #2b3a4a;
+  --c-panel-2: #3d5170;
+  --c-line: #56789b;
+  --c-sky: #6fc3df;
+  --c-ink: #0d1117;
+  --c-text: #e8e6d9;
+  --c-text-dim: #9aa7b4;
+  --c-accent: #f2b134;
+  --c-accent-2: #6fbf73;
+  --c-danger: #e05c5c;
+  --c-pink: #e87ea1;
+
+  /* 字体：优先像素中文字体，逐级回退，布局不塌 */
+  --font-pixel: 'Zpix', 'Fusion Pixel 12px', 'SG Pixel', 'Fusion Pixel', 'Microsoft YaHei',
+    'PingFang SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-size-base: clamp(13px, 3.6vw, 17px);
+
+  /* 像素风统一的硬边框，不用圆角、不用渐变阴影 */
+  --border-pixel: 3px solid var(--c-ink);
+  --shadow-pixel: 0 4px 0 0 var(--c-ink);
+
+  --ui-gap: clamp(6px, 1.6vw, 12px);
+  --radius: 0px;
+
+  color-scheme: dark;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --font-size-base: 17px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--c-void);
+  color: var(--c-text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: geometricPrecision;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* ---------- 应用外壳：Canvas 与 DOM 覆盖层叠加 ---------- */
+
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+/* 画布本体：内部分辨率固定 320×180，靠 CSS 整数倍放大 */
+#stage {
+  position: absolute;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: var(--c-bg);
+  touch-action: none;
+}
+
+/* 文本层：默认不吃点击，只有可交互元素单独打开 */
+#overlay {
+  position: absolute;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#overlay .interactive,
+#overlay button,
+#overlay input,
+#overlay textarea,
+#overlay select,
+#overlay a,
+#overlay label {
+  pointer-events: auto;
+}
+
+/* ---------- 通用像素组件 ---------- */
+
+.pixel-panel {
+  background: var(--c-panel);
+  border: var(--border-pixel);
+  box-shadow: var(--shadow-pixel);
+  padding: var(--ui-gap);
+}
+
+.pixel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 14px;
+  font: inherit;
+  color: var(--c-text);
+  background: var(--c-panel-2);
+  border: var(--border-pixel);
+  box-shadow: var(--shadow-pixel);
+  cursor: pointer;
+  transition: none;
+}
+
+.pixel-btn:hover,
+.pixel-btn:focus-visible {
+  background: var(--c-line);
+  outline: none;
+}
+
+.pixel-btn:active {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+.pixel-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: var(--shadow-pixel);
+}
+
+.pixel-btn--primary {
+  background: var(--c-accent);
+  color: var(--c-ink);
+}
+
+.pixel-btn--primary:hover,
+.pixel-btn--primary:focus-visible {
+  background: #ffc85c;
+}
+
+.title-pixel {
+  font-size: clamp(24px, 7vw, 46px);
+  letter-spacing: 0.12em;
+  color: var(--c-accent);
+  text-shadow: 3px 3px 0 var(--c-ink);
+  margin: 0;
+}
+
+.dim {
+  color: var(--c-text-dim);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* 滚动条也像素化 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--c-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-panel-2);
+  border: 2px solid var(--c-ink);
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1b2430" />
+    <meta name="description" content="课间十分钟 —— 初中校园主题像素剧情游戏" />
+    <title>课间十分钟</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- 像素画面层 -->
+      <canvas id="stage" aria-label="游戏画面"></canvas>
+      <!-- 文本 / 菜单覆盖层（中文文本走 DOM，渲染清晰且天然适配各尺寸） -->
+      <div id="overlay" class="overlay"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
