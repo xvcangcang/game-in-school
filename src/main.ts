@@ -17,12 +17,13 @@ import { aboutScene } from '@/scenes/aboutScene';
 import { bootScene } from '@/scenes/boot';
 import { creationScene } from '@/scenes/creation';
 import { devArtScene } from '@/scenes/devArt';
+import { galleryScene } from '@/scenes/gallery';
 import { loadScene } from '@/scenes/loadScene';
 import { menuScene } from '@/scenes/menu';
 import { newGameScene } from '@/scenes/newGameScene';
 import { playScene } from '@/scenes/play';
 import { settingsScene } from '@/scenes/settingsScene';
-import { stubScene } from '@/scenes/stubs';
+import { sfx } from '@/ui/audio';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
 const overlay = document.getElementById('overlay');
@@ -44,6 +45,20 @@ settingsStore.subscribe((s) => {
   resetAiBreaker();
 });
 
+/* 全局按钮音效：一个委托监听就够，不必每个按钮自己接。
+   选项按钮排除在外——它有自己的"好事/坏事"音效，再叠一层点击音就吵了。 */
+document.addEventListener(
+  'click',
+  (e) => {
+    const target = e.target as HTMLElement | null;
+    const btn = target?.closest('button');
+    if (!btn || btn.disabled) return;
+    if (btn.classList.contains('choice-btn') || btn.classList.contains('opt')) return;
+    sfx.click();
+  },
+  true,
+);
+
 const router = new Router(canvas, stage.ctx)
   .register('boot', bootScene)
   .register('menu', menuScene)
@@ -54,15 +69,7 @@ const router = new Router(canvas, stage.ctx)
   .register('dev-art', devArtScene)
   .register('creation', creationScene)
   .register('play', playScene)
-  .register('gallery', () =>
-    stubScene({
-      id: 'gallery',
-      title: '事件图鉴',
-      milestone: 'M7',
-      note: '这里会列出你触发过的所有剧情，按学段分组，可回看当时的选择。',
-      background: 'home',
-    }),
-  );
+  .register('gallery', galleryScene);
 
 /* 开发用直达路由：地址栏加 #dev=art 直接进美术预览 */
 const initialScene = location.hash === '#dev=art' ? 'dev-art' : 'boot';

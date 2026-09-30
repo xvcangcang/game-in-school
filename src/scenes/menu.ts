@@ -13,6 +13,7 @@ import { drawCharacter } from '@/render/sprite';
 import { drawBackground } from '@/render/tiles';
 import { STAGE_H, STAGE_W, px } from '@/render/canvas';
 import { createMenuList, type MenuItem, type MenuListHandle } from '@/ui/components';
+import { sfx } from '@/ui/audio';
 import { h } from '@/ui/dom';
 import { DEFAULT_APPEARANCE } from '@/data/appearances';
 
@@ -69,7 +70,9 @@ export function menuScene(): Scene {
           ),
           h('div', { class: 'menu-spacer' }),
           (() => {
-            list = createMenuList(buildItems(ctx));
+            list = createMenuList(buildItems(ctx), {
+              onFocusChange: () => sfx.move(),
+            });
             return list.el;
           })(),
           h(

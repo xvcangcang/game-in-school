@@ -67,7 +67,8 @@ const BREAKER_MS: Partial<Record<AiErrorCode, number>> = {
   TIMEOUT: 45 * 1000,
   NETWORK: 45 * 1000,
   UPSTREAM: 60 * 1000,
-  // BAD_RESPONSE 属于"这次答得不好"，不算连接问题，不触发熔断
+  // 模型偶尔答非所问很正常，短时间闭麦即可，别把 AI 一路封死
+  BAD_RESPONSE: 20 * 1000,
 };
 
 let breakerUntil = 0;
@@ -145,7 +146,13 @@ export async function chat(options: ChatOptions): Promise<string> {
       try {
         payload = JSON.parse(text);
       } catch {
-        throw new AiError('BAD_RESPONSE', `代理返回的不是 JSON：${text.slice(0, 160)}`);
+        // 返回的不是 JSON，说明 /api/llm 根本不是我们的代理
+        // （典型情况：纯静态托管把未知路径回退成了 index.html）。
+        // 这属于「接口不对」，按连接问题处理，让它触发熔断，别每回合都白试一次。
+        throw new AiError(
+          'NETWORK',
+          `代理没有返回 JSON，可能是静态托管把 /api/llm 回退成了页面。内容开头：${text.slice(0, 80)}`,
+        );
       }
 
       if (!res.ok) {
@@ -190,7 +197,11 @@ export async function chat(options: ChatOptions): Promise<string> {
     try {
       payload = JSON.parse(text);
     } catch {
-      throw new AiError('BAD_RESPONSE', `接口返回的不是 JSON：${text.slice(0, 160)}`);
+      // 直连时返回非 JSON，通常是 baseURL 填错了（指到了某个网站的首页）
+      throw new AiError(
+        'NETWORK',
+        `接口没有返回 JSON，检查一下接口地址是否写对。内容开头：${text.slice(0, 80)}`,
+      );
     }
 
     if (!res.ok) {

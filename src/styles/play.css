@@ -326,6 +326,54 @@
   text-shadow: 2px 2px 0 var(--c-ink);
 }
 
+/* ---------------- 结局 ---------------- */
+
+.ending-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--c-panel-2);
+}
+
+.ending-rank {
+  flex: 0 0 auto;
+  width: 1.7em;
+  height: 1.7em;
+  display: grid;
+  place-items: center;
+  font-size: 1.6em;
+  color: var(--c-ink);
+  background: var(--c-accent);
+  border: 3px solid var(--c-ink);
+}
+
+.ending-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ending-title {
+  font-size: 1.25em;
+  color: var(--c-accent);
+  letter-spacing: 0.08em;
+}
+
+.ending-subtitle {
+  font-size: 0.78em;
+}
+
+.ending-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(43, 58, 74, 0.6);
+  border-left: 3px solid var(--c-accent-2);
+}
+
 /* ---------------- NPC 聊天面板 ---------------- */
 
 .play-chat {

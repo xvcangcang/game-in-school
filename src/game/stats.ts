@@ -78,13 +78,36 @@ export function createInitialStats(
   return clampStats(base);
 }
 
+/**
+ * 软上限：属性越高，正向增益越打折。
+ *
+ * 为什么需要它：64 条事件的增减大致是平衡的，但玩家一天有 5 个时段、还有跨天恢复，
+ * 纯随机的选择也能在一个学期内把学业/心态/人气都顶到 100，游戏立刻失去张力。
+ * 有了软上限，前期收益饱满，后期要靠取舍而不是靠堆时间。
+ *
+ * 只作用于正向增益，惩罚永远是实打实的（不然玩家会觉得游戏在放水）。
+ */
+const SOFT_CAP = 80;
+const HARD_CAP = 95;
+
+function dampenGain(key: StatKey, from: number, diff: number): number {
+  if (diff <= 0) return diff;
+  if (STAT_META[key].unit) return diff; // 零花钱不设上限
+  if (from >= HARD_CAP) return Math.round(diff * 0.25);
+  if (from >= SOFT_CAP) return Math.round(diff * 0.5);
+  return diff;
+}
+
 /** 对一份属性施加增量，返回新对象（不修改入参） */
 export function applyStatDelta(stats: Stats, delta: Partial<Stats> | undefined): Stats {
   if (!delta) return stats;
   const next = { ...stats };
   for (const key of STAT_KEYS) {
-    const d = delta[key];
-    if (typeof d === 'number' && d !== 0) next[key] = clampStat(key, next[key] + d);
+    const raw = delta[key];
+    if (typeof raw !== 'number' || raw === 0) continue;
+    const d = dampenGain(key, next[key], raw);
+    if (d === 0) continue;
+    next[key] = clampStat(key, next[key] + d);
   }
   return next;
 }

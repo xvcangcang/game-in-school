@@ -15,6 +15,7 @@
 import { aiReadyForAttempt } from '@/ai/client';
 import { generateAiEvent } from '@/ai/generator';
 import { npcReply } from '@/ai/chat';
+import { unlockEvent } from '@/app/gallery';
 import { Rng } from '@/app/rng';
 import { saveGame } from '@/app/save';
 import { gameStore, getActiveSlot, settingsStore } from '@/app/state';
@@ -23,6 +24,7 @@ import { C } from '@/render/palette';
 import { drawCharacter } from '@/render/sprite';
 import { drawBackground } from '@/render/tiles';
 import { STAGE_H, STAGE_W, px } from '@/render/canvas';
+import { computeEnding } from '@/game/ending';
 import { describeReport } from '@/game/effects';
 import { availableChoices, markEventSeen, pickEvent, resolveChoice } from '@/game/engine';
 import { renderTemplate } from '@/game/text';
@@ -30,6 +32,7 @@ import { describeTime, isNight } from '@/game/schedule';
 import { promoteToNextPhase, summarizeTerm, type TermSummary } from '@/game/term';
 import { PHASE_META, STAT_KEYS, STAT_META } from '@/game/types';
 import type { GameEvent, GameState } from '@/game/types';
+import { sfx } from '@/ui/audio';
 import { createToast, type ToastHandle } from '@/ui/components';
 import { h } from '@/ui/dom';
 
@@ -60,6 +63,7 @@ export function playScene(): Scene {
   let summary: TermSummary | null = null;
   let toast: ToastHandle | null = null;
   let fillerCounter = 0;
+  let lastTickChars = 0;
   /** 每次推进时段都 +1；异步的 AI 请求回来时用它判断"这一轮是不是已经作废了" */
   let turnToken = 0;
   let lastAiNote = '';
@@ -99,6 +103,7 @@ export function playScene(): Scene {
     current = null;
     fullText = '';
     typedChars = 0;
+    lastTickChars = 0;
     lastResultText = '';
     resultLines = [];
     mode = 'event';
@@ -135,6 +140,9 @@ export function playScene(): Scene {
     fullText = renderTemplate(event.text, state);
     typedChars = 0;
     mode = 'event';
+    // 收集进图鉴 + 一点提示音（换时段的那声"铃"）
+    unlockEvent(event.id);
+    sfx.bell();
     renderAll();
   }
 
@@ -151,9 +159,15 @@ export function playScene(): Scene {
       : '（没什么特别的反应。）';
     resultLines = describeReport(result.report);
 
+    // 用实际数值变化决定是"好事音"还是"坏事音"
+    const net = result.report.stats.reduce((sum, d) => sum + d.diff, 0);
+    if (current.tone === 'bad' || net < 0) sfx.bad();
+    else if (current.tone === 'good' || net > 0) sfx.good();
+
     if (result.termEnded) {
       summary = summarizeTerm(state);
       mode = 'term';
+      sfx.fanfare();
     } else {
       mode = 'result';
     }
@@ -252,18 +266,55 @@ export function playScene(): Scene {
     if (!dialogEl || !state) return;
     const s = state;
 
-    /* ---- 结局（真正的结局系统在 M7） ---- */
+    /* ---- 结局 ---- */
     if (mode === 'ending') {
-      dialogEl.replaceChildren(
-        h('div', { class: 'dialog-title', text: '毕业' }),
-        h('p', {
-          class: 'dialog-text',
-          text: '三年的时间在最后一场考试的铃声里结束了。你背着书包走出校门，回头看了一眼那栋教学楼。',
-        }),
-        h('p', { class: 'dim small-note', text: '（完整结局系统在 M7 实现）' }),
+      const ending = computeEnding(s);
+      const parts: HTMLElement[] = [
+        h(
+          'div',
+          { class: 'ending-head' },
+          h('span', { class: 'ending-rank', text: ending.rank }),
+          h(
+            'span',
+            { class: 'ending-head-text' },
+            h('span', { class: 'ending-title', text: ending.title }),
+            h('span', {
+              class: 'ending-subtitle dim',
+              text: `${ending.subtitle} · 综合评分 ${ending.score}`,
+            }),
+          ),
+        ),
+        ...ending.paragraphs.map((p) => h('p', { class: 'dialog-text', text: p })),
+      ];
+
+      if (ending.highlights.length > 0) {
+        parts.push(
+          h(
+            'div',
+            { class: 'ending-highlights' },
+            h('h4', { class: 'section-title', text: '这三年你还记得的几件事' }),
+            ...ending.highlights.map((hl) =>
+              h('p', {
+                class: 'small-note',
+                text: `第 ${hl.day} 天 · ${hl.title} —— 你选了「${hl.choice}」`,
+              }),
+            ),
+          ),
+        );
+      }
+
+      parts.push(
         h(
           'div',
           { class: 'dialog-actions' },
+          h('button', {
+            class: 'pixel-btn',
+            type: 'button',
+            text: '再来一局',
+            onClick: () => {
+              ctxRef?.go('new-game');
+            },
+          }),
           h('button', {
             class: 'pixel-btn pixel-btn--primary',
             type: 'button',
@@ -275,6 +326,8 @@ export function playScene(): Scene {
           }),
         ),
       );
+
+      dialogEl.replaceChildren(...parts);
       return;
     }
 
@@ -383,12 +436,12 @@ export function playScene(): Scene {
     });
 
     dialogEl.replaceChildren(
-      h(
-        'div',
-        { class: 'dialog-title' },
-        h('span', { text: current.title }),
-        current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
-      ),
+        h(
+          'div',
+          { class: 'dialog-title' },
+          h('span', { text: current.title }),
+          current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
+        ),
       textEl,
       choicesEl,
       h('p', {
@@ -602,6 +655,13 @@ export function playScene(): Scene {
       const speed = TYPE_SPEED[settingsStore.get().textSpeed] ?? TYPE_SPEED.normal;
       typedChars = Math.min(fullText.length, typedChars + speed * dt);
       updateTypedText();
+
+      // 打字机的轻微"哒哒"声，每 5 个字响一下
+      const shown = Math.floor(typedChars);
+      if (shown >= lastTickChars + 5 && shown < fullText.length) {
+        lastTickChars = shown;
+        sfx.type();
+      }
     },
 
     render(c: CanvasRenderingContext2D): void {

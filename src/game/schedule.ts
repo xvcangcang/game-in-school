@@ -65,24 +65,25 @@ export function advanceSlot(state: GameState): AdvanceResult {
 
 /** 新的一天：睡一觉回点血，但家里的期望还在涨 */
 function beginNewDay(state: GameState): GameState {
-  const pressure = Math.round(state.stats.familyExpect / 45); // 期望越高，每天掉的心态越多
+  // 期望越高，每天背着的心态压力越大。至少 1 点，否则玩家永远不会觉得"累"。
+  const pressure = Math.max(1, Math.round(state.stats.familyExpect / 30));
   return {
     ...state,
     stats: applyStatDelta(state.stats, {
-      stamina: 10,
-      mood: 2 - pressure,
+      stamina: 8,
+      mood: 1 - pressure,
     }),
   };
 }
 
-/** 新的一周：周末补觉，学业有点自然遗忘 */
+/** 新的一周：周末补觉，学业有点自然遗忘（衰减别太狠，否则玩家只能在"补作业"里打转） */
 function beginNewWeek(state: GameState): GameState {
   return {
     ...state,
     stats: applyStatDelta(state.stats, {
       stamina: 8,
       mood: 3,
-      study: -3,
+      study: -2,
     }),
   };
 }
