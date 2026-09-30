@@ -12,8 +12,9 @@ import { makeFillerEvent } from '@/data/fillers';
 import { checkCondition, slotIdAt } from '@/game/conditions';
 import { applyEffects, type EffectReport } from '@/game/effects';
 import { advanceSlot } from '@/game/schedule';
+import { referencedCharacterIds } from '@/game/text';
 import type { Rng } from '@/app/rng';
-import type { Choice, GameEvent, GameState, LogEntry } from '@/game/types';
+import type { Choice, GameEvent, GameState, LogEntry, Stats } from '@/game/types';
 import { DIFFICULTY_META, SLOT_META } from '@/game/types';
 
 /** 连续几个负面事件之后强制来点好事 */
@@ -31,6 +32,27 @@ export interface PickOptions {
   fillerSeed?: number;
 }
 
+/**
+ * 一个事件在正文/选项里引用到的全部角色 id（含 participants）。
+ *
+ * 为什么需要它：玩家可以在角色工坊里删掉「刘主任」，这时再触发点名刘主任的事件，
+ * 正文就会直接显示 `{npc_dean}` 这种原始占位符——非常出戏。
+ * 所以事件触发前必须确认它引用的每个角色都还在场。
+ */
+export function referencedIdsOf(event: GameEvent): string[] {
+  const ids = new Set<string>(event.participants ?? []);
+  const scan = (text: string | undefined): void => {
+    if (!text) return;
+    for (const id of referencedCharacterIds(text)) ids.add(id);
+  };
+  scan(event.text);
+  for (const choice of event.choices) {
+    scan(choice.text);
+    scan(choice.resultText);
+  }
+  return [...ids];
+}
+
 /** 事件是否满足发生条件（不含权重） */
 export function eventEligible(state: GameState, event: GameEvent): boolean {
   if (event.phase && event.phase.length > 0 && !event.phase.includes(state.phase)) return false;
@@ -42,6 +64,11 @@ export function eventEligible(state: GameState, event: GameEvent): boolean {
   }
 
   if (!checkCondition(state, event.require)) return false;
+
+  // 引用的角色必须都还在（玩家可能已经在角色工坊里删掉了某个预设角色）
+  for (const id of referencedIdsOf(event)) {
+    if (!state.characters.some((c) => c.id === id)) return false;
+  }
 
   // 冷却中
   const until = state.cooldowns[event.id];
@@ -121,6 +148,10 @@ export interface ResolveResult {
   choice: Choice;
   /** 是否已经推进到下一个时段 */
   advanced: boolean;
+  /** 是否跨天了（用于触发日终结算） */
+  newDay: boolean;
+  /** 刚结束那一天的结算素材，见 schedule.ts 的 AdvanceResult.endedDay */
+  endedDay?: { day: number; statsBefore: Stats; statsAfter: Stats };
   termEnded: boolean;
 }
 
@@ -151,17 +182,29 @@ export function resolveChoice(
 
   const shouldAdvance = choice.effects.advance !== false;
   let advanced = false;
+  let newDay = false;
   let termEnded = false;
+  let endedDay: ResolveResult['endedDay'];
 
   if (shouldAdvance) {
     const res = advanceSlot(next);
     next = res.state;
     advanced = true;
+    newDay = res.newDay;
     termEnded = res.termEnded;
+    endedDay = res.endedDay;
   }
 
   void rng; // 目前结算不需要随机，保留参数是为了以后加随机结果
-  return { state: next, report: withChoiceApplied.report, choice, advanced, termEnded };
+  return {
+    state: next,
+    report: withChoiceApplied.report,
+    choice,
+    advanced,
+    newDay,
+    termEnded,
+    ...(endedDay ? { endedDay } : {}),
+  };
 }
 
 /** 调试用：当前状态下有多少事件可以触发 */

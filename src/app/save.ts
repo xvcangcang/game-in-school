@@ -40,6 +40,13 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
       }),
     };
   },
+
+  /** 2 → 3：GameState 新增 `dayStartStats`（日终结算用），用当前属性兜底 */
+  2: (raw) => ({
+    ...raw,
+    version: 3,
+    dayStartStats: raw.dayStartStats ?? raw.stats,
+  }),
 };
 
 export class SaveError extends Error {
@@ -122,6 +129,8 @@ export function loadGame(slot: number): GameState {
   state.characters = state.characters.map((c) =>
     c.title?.trim() ? c : { ...c, title: defaultTitleFor(c.role, c.isProtagonist) },
   );
+  // 日终结算依赖这个快照，缺失就用当前属性兜底，免得结算页显示一堆 NaN
+  state.dayStartStats ??= { ...state.stats };
   return state;
 }
 

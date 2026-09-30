@@ -92,9 +92,24 @@ try {
     // ---- 自动选选项 ----
     let played = 0;
     let stuck = 0;
+    let dayOverlays = 0;
     const titles = [];
 
     for (let t = 0; t < maxTurns; t++) {
+      /*
+       * 先把可能挡在前面的模态处理掉：
+       *  - .day-continue 是日终结算的「继续」（灰屏大字那张卡片）
+       *  - .dialog-actions 里的是结果页 / 期末成绩单 / 结局的按钮
+       * 不处理它们的话，脚本会一直去点被盖住的选项，看起来"玩了很多回合"其实原地打转。
+       */
+      const dayBtn = document.querySelector('.day-continue');
+      if (dayBtn) {
+        dayOverlays++;
+        dayBtn.click();
+        await sleep(160);
+        continue;
+      }
+
       // 等打字机跑完；开了真 AI 时每次要等模型返回，所以给足 20 秒
       let guard = 0;
       while (
@@ -106,12 +121,13 @@ try {
 
       // 注意排除 .talk-btn：它是「和XX说句话」，点它会打开聊天面板而不是推进剧情
       const buttons = document.querySelectorAll('.dialog-choices .choice-btn:not(.talk-btn)');
+
+      // 没有可选项：多半停在结果页/成绩单/结局，点那个继续按钮
       if (buttons.length === 0) {
-        // 可能停在成绩单或结局页
         const cont = document.querySelector('.dialog-actions .pixel-btn');
         if (cont) {
           cont.click();
-          await sleep(60);
+          await sleep(160);
           continue;
         }
         stuck++;
@@ -138,13 +154,14 @@ try {
     const raw = localStorage.getItem('cps:save:1');
     return {
       played,
+      dayOverlays,
       titles,
       state: raw ? JSON.parse(raw) : null,
       scene: window.__game?.router.currentSceneId?.() ?? 'unknown',
     };
   }, turns);
 
-  console.log(`PLAYED ${result.played} 个选择，结束场景：${result.scene}`);
+  console.log(`PLAYED ${result.played} 个选择，经历 ${result.dayOverlays} 次日终结算，结束场景：${result.scene}`);
 
   if (result.state) {
     const s = result.state;

@@ -10,6 +10,7 @@
 
 import type { Effects, EventTone, GameState, SceneKind, StatKey, Stats } from '@/game/types';
 import { SCENE_KIND_LIST, STAT_KEYS, STAT_META } from '@/game/types';
+import { referencedCharacterIds } from '@/game/text';
 
 export interface AiChoiceDraft {
   text: string;
@@ -96,7 +97,33 @@ export function validateEventDraft(raw: unknown, state: GameState): ValidationRe
     const resultText = asString(rc.resultText)?.trim().slice(0, 160);
 
     const effects = normalizeEffects(rc.effects, knownIds);
-    choices.push({ text: choiceText, effects, ...(resultText ? { resultText } : {}) });
+    const draftChoice: AiChoiceDraft = { text: choiceText, effects };
+    if (resultText) draftChoice.resultText = resultText;
+    choices.push(draftChoice);
+  }
+
+  /*
+   * 占位符必须都能解析。
+   * 模型有时会凭空引用一个不存在的角色（或者把 id 拼错），那样正文会原样显示
+   * `{npc_xxx}`，比生成失败还糟。这里直接判不合法，让上层重试。
+   */
+  const dangling = new Set<string>();
+  const scan = (text: string | undefined): void => {
+    if (!text) return;
+    for (const id of referencedCharacterIds(text)) {
+      if (!knownIds.has(id)) dangling.add(id);
+    }
+  };
+  scan(text);
+  for (const c of choices) {
+    scan(c.text);
+    scan(c.resultText);
+  }
+  if (dangling.size > 0) {
+    return {
+      ok: false,
+      error: `正文里引用了不存在的角色：${[...dangling].join('、')}。只能用给定的角色 id。`,
+    };
   }
 
   return { ok: true, value: { title, text, tone, scene, participants, choices } };

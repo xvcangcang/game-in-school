@@ -7,7 +7,7 @@
  */
 
 import { applyStatDelta } from '@/game/stats';
-import type { GameState, SlotId } from '@/game/types';
+import type { GameState, SlotId, Stats } from '@/game/types';
 import { SLOT_ORDER } from '@/game/types';
 
 export const SLOTS_PER_DAY = SLOT_ORDER.length;
@@ -34,10 +34,24 @@ export interface AdvanceResult {
   newWeek: boolean;
   /** 是否学期结束（该结算了） */
   termEnded: boolean;
+  /**
+   * 刚结束那一天的结算素材（只在跨天时有值）。
+   * 起始属性取的是「昨天凌晨恢复完之后」的快照，结束属性取的是「今晚睡前」的，
+   * 所以这段差值正好是一整个白天发生了什么，不掺杂夜间恢复。
+   */
+  endedDay?: {
+    day: number;
+    statsBefore: Stats;
+    statsAfter: Stats;
+  };
 }
 
 /** 推进一个时段 */
 export function advanceSlot(state: GameState): AdvanceResult {
+  const previousDay = state.day;
+  const statsBeforeThisDay = { ...state.dayStartStats };
+  const statsAtDayEnd = { ...state.stats };
+
   let slotIndex = state.slotIndex + 1;
   let day = state.day;
   let newDay = false;
@@ -60,20 +74,33 @@ export function advanceSlot(state: GameState): AdvanceResult {
     newDay,
     newWeek,
     termEnded: next.week > WEEKS_PER_TERM,
+    ...(newDay
+      ? {
+          endedDay: {
+            day: previousDay,
+            statsBefore: statsBeforeThisDay,
+            statsAfter: statsAtDayEnd,
+          },
+        }
+      : {}),
   };
+}
+
+/** 只恢复体力与心态，并记下当天起始快照（日终结算要用） */
+function applyNightRecovery(state: GameState): GameState {
+  // 期望越高，每天背着的心态压力越大。至少 1 点，否则玩家永远不会觉得"累"。
+  const pressure = Math.max(1, Math.round(state.stats.familyExpect / 30));
+  const stats = applyStatDelta(state.stats, {
+    stamina: 8,
+    mood: 1 - pressure,
+  });
+  // 快照记的是"恢复完之后"的属性，这样一天的增减只统计白天发生的事
+  return { ...state, stats, dayStartStats: { ...stats } };
 }
 
 /** 新的一天：睡一觉回点血，但家里的期望还在涨 */
 function beginNewDay(state: GameState): GameState {
-  // 期望越高，每天背着的心态压力越大。至少 1 点，否则玩家永远不会觉得"累"。
-  const pressure = Math.max(1, Math.round(state.stats.familyExpect / 30));
-  return {
-    ...state,
-    stats: applyStatDelta(state.stats, {
-      stamina: 8,
-      mood: 1 - pressure,
-    }),
-  };
+  return applyNightRecovery(state);
 }
 
 /** 新的一周：周末补觉，学业有点自然遗忘（衰减别太狠，否则玩家只能在"补作业"里打转） */

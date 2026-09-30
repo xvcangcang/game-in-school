@@ -11,6 +11,7 @@ import { describeCharacter, relationLabel } from '@/game/character';
 import { npcs } from '@/game/character';
 import { describeTime } from '@/game/schedule';
 import { renderTemplate } from '@/game/text';
+import type { DailySummary } from '@/game/dailySummary';
 import type { GameState, StatKey } from '@/game/types';
 import { PHASE_META, SLOT_META, STAT_META } from '@/game/types';
 import type { ChatMessage } from '@/ai/client';
@@ -108,6 +109,48 @@ export function buildEventRetryPrompt(state: GameState, reason: string): string 
 
 【上一次生成不合法，请修正】${reason}
 再次强调：只输出一个 JSON 对象，不要任何解释文字。`;
+}
+
+/* ------------------------------------------------------------------ *
+ * 日终结算的一句话小结
+ * ------------------------------------------------------------------ */
+
+export const DAILY_SUMMARY_SYSTEM_PROMPT = `你是一个中国初中生的日记代笔。
+
+【要求】
+1. 用第一人称「我」，写 1~2 句话，40 字以内。
+2. 只写这一天的心情和感受，**不要复述具体事件**，不要罗列数值。
+3. 语气克制、具体，像真的初中生写在日记本上的，不要鸡汤、不要正能量说教。
+4. **只输出这一两句话本身**，不要 JSON、不要引号、不要标题、不要解释。
+5. 角色是初中生，不写恋爱露骨内容、暴力、自伤、违法内容。`;
+
+export function buildDailySummaryPrompt(state: GameState, summary: DailySummary): string {
+  const protagonist = state.characters.find((c) => c.isProtagonist);
+  const happened = summary.events.length
+    ? summary.events.map((e) => `- ${SLOT_META[e.slot].name}：${e.title}（我选了「${e.choice}」）`).join('\n')
+    : '（今天什么特别的事都没发生）';
+
+  const changes = summary.deltas.length
+    ? summary.deltas
+        .map((d) => `${STAT_META[d.key].name} ${d.diff > 0 ? '+' : ''}${d.diff}`)
+        .join('　')
+    : '（属性和昨天一样）';
+
+  return `【今天】
+${PHASE_META[summary.phase].name} · 第 ${summary.week} 周 ${summary.weekday}（第 ${summary.day} 天）
+
+【今天发生的事】
+${happened}
+
+【今天的属性变化】
+${changes}
+
+【现在的状态】
+${(Object.keys(STAT_META) as StatKey[]).map((k) => `${STAT_META[k].name} ${summary.statsAfter[k]}`).join(' · ')}
+心态档位：${summary.moodTier}
+${protagonist ? `我是${protagonist.name}，身份是「${protagonist.title ?? '学生'}」。` : ''}
+
+请以「我」的口吻为今天写一两句日记。只输出日记内容本身。`;
 }
 
 /* ------------------------------------------------------------------ *

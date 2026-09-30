@@ -49,6 +49,7 @@ export function createNewGame(options: NewGameOptions): GameState {
   });
 
   const characters = [protagonist, ...(options.npcs ?? defaultNpcRoster())];
+  const stats = createInitialStats(options.phase, options.difficulty, options.protagonist.personality);
 
   return {
     version: SAVE_VERSION,
@@ -59,7 +60,8 @@ export function createNewGame(options: NewGameOptions): GameState {
     day: 1,
     week: 1,
     slotIndex: 0,
-    stats: createInitialStats(options.phase, options.difficulty, options.protagonist.personality),
+    stats,
+    dayStartStats: { ...stats },
     protagonistId: protagonist.id,
     characters,
     flags: [],

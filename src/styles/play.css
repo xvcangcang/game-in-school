@@ -501,6 +501,144 @@
   }
 }
 
+/* ---------------- 日终结算（灰屏大字） ---------------- */
+
+.day-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 3vw, 24px);
+  /* 灰屏：盖住整个画面，让玩家知道这一天结束了 */
+  background: rgba(126, 134, 144, 0.9);
+  z-index: 10;
+}
+
+.day-overlay.is-open {
+  display: flex;
+  animation: day-fade 0.18s linear;
+}
+
+@keyframes day-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.day-card {
+  width: 100%;
+  max-width: 720px;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: clamp(12px, 3vw, 22px);
+  background: rgba(14, 19, 26, 0.96);
+  border: 3px solid var(--c-ink);
+  box-shadow: 0 6px 0 0 var(--c-ink);
+}
+
+.day-kicker {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78em;
+  letter-spacing: 0.24em;
+  color: var(--c-text-dim);
+}
+
+.day-big {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(26px, 6.4vw, 46px);
+  letter-spacing: 0.1em;
+  color: var(--c-accent);
+  text-shadow: 3px 3px 0 var(--c-ink);
+  line-height: 1.25;
+}
+
+.day-headline {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--c-accent-2);
+  font-size: 0.95em;
+  line-height: 1.75;
+}
+
+.day-headline.is-loading {
+  color: var(--c-text-dim);
+}
+
+.day-typing {
+  font-size: 0.8em;
+  color: var(--c-text-dim);
+}
+
+.day-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.day-event-line {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.84em;
+  line-height: 1.6;
+  flex-wrap: wrap;
+}
+
+.day-event-slot {
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  color: var(--c-ink);
+  background: var(--c-text-dim);
+  padding: 0 5px;
+}
+
+.day-event-title {
+  color: var(--c-accent);
+}
+
+.day-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 2px solid var(--c-panel-2);
+}
+
+.day-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.day-continue {
+  min-width: 160px;
+}
+
+@media (max-width: 639px) {
+  .day-stats .stat-name {
+    display: none;
+  }
+  .day-stats .stat-name-short {
+    display: inline;
+  }
+}
+
 /* ---------------- 适配 ---------------- */
 
 /* 竖屏：画面在上方独占一条，对话框直接铺满剩下的空间 */

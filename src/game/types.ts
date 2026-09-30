@@ -291,6 +291,12 @@ export interface GameState {
   /** 当前时段在 SLOT_ORDER 中的下标 0~4 */
   slotIndex: number;
   stats: Stats;
+  /**
+   * 本天开始时的属性快照（每天凌晨恢复完后记录）。
+   * 日终结算要靠它算出「今天涨了什么、掉了什么」——历史记录里只有事件标题，
+   * 没有数值变化，光靠 history 是算不出来的。
+   */
+  dayStartStats: Stats;
   protagonistId: string;
   characters: Character[];
   flags: string[];
@@ -362,5 +368,6 @@ export interface Settings {
  *
  * 1 → 初版
  * 2 → Character 增加自由填写的 `title`（身份），迁移时按 role 补默认值
+ * 3 → GameState 增加 `dayStartStats`（日终结算用），迁移时用当前属性兜底
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;

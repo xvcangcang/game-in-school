@@ -14,6 +14,7 @@
 
 import { aiReadyForAttempt } from '@/ai/client';
 import { generateAiEvent, generateFollowUpFromChat } from '@/ai/generator';
+import { generateDailyComment } from '@/ai/summary';
 import { npcReply } from '@/ai/chat';
 import { unlockEvent } from '@/app/gallery';
 import { Rng } from '@/app/rng';
@@ -25,6 +26,7 @@ import { drawCharacter } from '@/render/sprite';
 import { drawBackground } from '@/render/tiles';
 import { STAGE_H, STAGE_W, px } from '@/render/canvas';
 import { computeEnding } from '@/game/ending';
+import { deltaLabel, slotName, summarizeDay, type DailySummary } from '@/game/dailySummary';
 import { describeReport } from '@/game/effects';
 import { availableChoices, markEventSeen, pickEvent, resolveChoice } from '@/game/engine';
 import { renderTemplate } from '@/game/text';
@@ -36,7 +38,7 @@ import { sfx } from '@/ui/audio';
 import { createToast, type ToastHandle } from '@/ui/components';
 import { h } from '@/ui/dom';
 
-type PlayMode = 'event' | 'result' | 'term' | 'ending' | 'thinking';
+type PlayMode = 'event' | 'result' | 'term' | 'ending' | 'thinking' | 'dayend';
 
 /** 打字机速度：每毫秒显示多少字 */
 const TYPE_SPEED: Record<string, number> = {
@@ -73,6 +75,15 @@ export function playScene(): Scene {
   let textEl: HTMLElement | null = null;
   let choicesEl: HTMLElement | null = null;
   let talkTargetsRef: { id: string; name: string }[] = [];
+  let dayOverlayEl: HTMLElement | null = null;
+
+  /* ---- 日终结算 ---- */
+  let daySummary: DailySummary | null = null;
+  /** AI 写的那句日记；没拿到就退回 daySummary.headline */
+  let dayComment: string | null = null;
+  let dayCommentBusy = false;
+  /** 这一天恰好也是学期最后一天时，先看日结再看成绩单 */
+  let pendingTerm = false;
 
   let ctxRef: SceneContext | null = null;
   let mounted = false;
@@ -171,6 +182,21 @@ export function playScene(): Scene {
     // 上课铃只在跨天时响一次。原来每个时段都响，几秒一敲，纯噪音。
     if (state.day !== previousDay) sfx.bell();
 
+    /*
+     * 跨天了 → 先看日终结算（灰屏大字 + 当天汇总）。
+     * 这一天刚好是学期最后一天时，pendingTerm 记下来，日结看完再进成绩单。
+     */
+    if (result.endedDay) {
+      daySummary = summarizeDay(state, result.endedDay);
+      dayComment = null;
+      dayCommentBusy = false;
+      pendingTerm = result.termEnded;
+      mode = 'dayend';
+      renderAll();
+      void loadDayComment();
+      return;
+    }
+
     if (result.termEnded) {
       summary = summarizeTerm(state);
       mode = 'term';
@@ -179,6 +205,134 @@ export function playScene(): Scene {
       mode = 'result';
     }
     renderAll();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 日终结算
+   * ------------------------------------------------------------------ */
+
+  /** 请 AI 写一句今天的日记；拿不到就继续用本地兜底句 */
+  async function loadDayComment(): Promise<void> {
+    if (!state || !daySummary) return;
+    if (!(state.aiEnabled && aiReadyForAttempt())) return;
+
+    dayCommentBusy = true;
+    renderDayOverlay();
+
+    const comment = await generateDailyComment(state, daySummary);
+    if (!mounted) return;
+    dayCommentBusy = false;
+    if (comment) dayComment = comment;
+    renderDayOverlay();
+  }
+
+  function continueFromDayEnd(): void {
+    if (mode !== 'dayend' || !state) return;
+    daySummary = null;
+    dayComment = null;
+    dayCommentBusy = false;
+
+    if (pendingTerm) {
+      pendingTerm = false;
+      summary = summarizeTerm(state);
+      mode = 'term';
+      sfx.fanfare();
+      renderAll();
+      return;
+    }
+    void nextTurn();
+  }
+
+  function renderDayOverlay(): void {
+    if (!dayOverlayEl) return;
+
+    if (mode !== 'dayend' || !daySummary) {
+      dayOverlayEl.classList.remove('is-open');
+      dayOverlayEl.replaceChildren();
+      return;
+    }
+
+    const s = daySummary;
+    const headline = dayComment ?? s.headline;
+
+    dayOverlayEl.replaceChildren(
+      h(
+        'div',
+        { class: 'day-card' },
+        h('p', { class: 'day-kicker', text: `${s.phaseName} · 第 ${s.week} 周 ${s.weekday}` }),
+        h('p', { class: 'day-big', text: `第 ${s.day} 天 · 结束` }),
+        h(
+          'p',
+          { class: `day-headline ${dayCommentBusy ? 'is-loading' : ''}` },
+          headline,
+          dayCommentBusy ? h('span', { class: 'day-typing', text: ' （AI 正在写今天的日记…）' }) : null,
+        ),
+        s.deltas.length > 0
+          ? h(
+              'div',
+              { class: 'day-deltas' },
+              ...s.deltas.map((d) =>
+                h('span', {
+                  class: `delta ${d.diff > 0 ? 'is-up' : 'is-down'}`,
+                  text: deltaLabel(d),
+                }),
+              ),
+            )
+          : h('p', { class: 'dim small-note', text: '今天的属性没什么变化。' }),
+        h(
+          'div',
+          { class: 'day-events' },
+          h('h4', { class: 'section-title', text: `今天发生的 ${s.events.length} 件事` }),
+          ...(s.events.length > 0
+            ? s.events.map((e) =>
+                h(
+                  'p',
+                  { class: 'day-event-line' },
+                  h('span', { class: 'day-event-slot', text: slotName(e.slot) }),
+                  h('span', { class: 'day-event-title', text: e.title }),
+                  h('span', { class: 'dim', text: `你选了「${e.choice}」` }),
+                ),
+              )
+            : [h('p', { class: 'dim small-note', text: '（今天什么特别的事都没发生）' })]),
+        ),
+        h(
+          'div',
+          { class: 'day-stats' },
+          ...STAT_KEYS.map((key) => {
+            const meta = STAT_META[key];
+            const value = s.statsAfter[key];
+            const ratio = meta.unit ? Math.min(1, value / 200) : value / 100;
+            return h(
+              'div',
+              { class: 'stat-chip', title: `${meta.name}：${value}` },
+              h('span', { class: 'stat-name', text: meta.name }),
+              h('span', { class: 'stat-name-short', text: meta.short }),
+              h(
+                'span',
+                { class: 'stat-bar' },
+                h('span', {
+                  class: 'stat-fill',
+                  style: `width:${Math.round(ratio * 100)}%;background:${meta.color}`,
+                }),
+              ),
+              h('span', { class: 'stat-value', text: String(value) }),
+            );
+          }),
+        ),
+        h(
+          'div',
+          { class: 'day-actions' },
+          h('button', {
+            class: 'pixel-btn pixel-btn--primary day-continue',
+            type: 'button',
+            text: pendingTerm ? '看期末成绩单 →' : '继续 →',
+            onClick: continueFromDayEnd,
+          }),
+        ),
+      ),
+    );
+
+    dayOverlayEl.classList.add('is-open');
   }
 
   function advancePhase(): void {
@@ -489,6 +643,7 @@ export function playScene(): Scene {
     renderTopbar();
     renderDialog();
     renderChat();
+    renderDayOverlay();
   }
 
   /* ------------------------------------------------------------------ *
@@ -721,6 +876,7 @@ export function playScene(): Scene {
       topbarEl = h('div', { class: 'play-topbar interactive' });
       dialogEl = h('div', { class: 'play-dialog interactive' });
       chatPanelEl = h('div', { class: 'play-chat interactive' });
+      dayOverlayEl = h('div', { class: 'day-overlay interactive' });
 
       ctx.overlay.appendChild(
         h(
@@ -730,6 +886,7 @@ export function playScene(): Scene {
           h('div', { class: 'play-stage' }),
           dialogEl,
           chatPanelEl,
+          dayOverlayEl,
           toast.el,
         ),
       );
@@ -748,9 +905,12 @@ export function playScene(): Scene {
       textEl = null;
       choicesEl = null;
       chatPanelEl = null;
+      dayOverlayEl = null;
       chatWith = null;
       ctxRef = null;
       current = null;
+      daySummary = null;
+      dayComment = null;
     },
 
     update(dt: number): void {
@@ -808,6 +968,15 @@ export function playScene(): Scene {
     },
 
     onKey(e: KeyboardEvent): boolean {
+      // 日终结算是模态的：任何确认键都往下走
+      if (mode === 'dayend') {
+        if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') {
+          continueFromDayEnd();
+          return true;
+        }
+        return false;
+      }
+
       if (chatWith) {
         if (e.key === 'Escape') {
           closeChat();
