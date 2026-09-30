@@ -7,7 +7,8 @@
  * - 迁移钩子 MIGRATIONS 从版本 n 迁到 n+1，逐级调用。
  */
 
-import type { GameState, PhaseId, SaveSlotMeta } from '@/game/types';
+import { defaultTitleFor } from '@/game/character';
+import type { GameState, PhaseId, RoleId, SaveSlotMeta } from '@/game/types';
 import { SAVE_VERSION } from '@/game/types';
 
 export const SLOT_COUNT = 3;
@@ -17,10 +18,28 @@ export function slotKey(slot: number): string {
   return `${SLOT_PREFIX}${slot}`;
 }
 
-/** 版本迁移表：MIGRATIONS[n] 把版本 n 的存档升级到 n+1 */
+/**
+ * 版本迁移表：MIGRATIONS[n] 把版本 n 的存档升级到 n+1。
+ * 加新版本时请**同时**在 game/types.ts 里把 SAVE_VERSION +1。
+ */
 const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> = {
-  // 1 → 2 的迁移以后写在这里，例如：
-  // 1: (raw) => ({ ...raw, version: 2, newField: defaultValue }),
+  /** 1 → 2：Character 新增自由填写的 `title`（身份），按 role 补一个默认值 */
+  1: (raw) => {
+    const characters = Array.isArray(raw.characters) ? raw.characters : [];
+    return {
+      ...raw,
+      version: 2,
+      characters: characters.map((entry) => {
+        if (typeof entry !== 'object' || entry === null) return entry;
+        const ch = entry as Record<string, unknown>;
+        if (typeof ch.title === 'string' && ch.title.trim()) return ch;
+
+        const role = typeof ch.role === 'string' ? (ch.role as RoleId) : 'classmate';
+        const isProtagonist = ch.isProtagonist === true;
+        return { ...ch, title: defaultTitleFor(role, isProtagonist) };
+      }),
+    };
+  },
 };
 
 export class SaveError extends Error {
@@ -99,6 +118,10 @@ export function loadGame(slot: number): GameState {
   state.cooldowns ??= {};
   state.history ??= [];
   state.badStreak ??= 0;
+  // 身份可能是空的（手改过存档、或迁移没覆盖到），补一个默认值，UI 就不会出现空白标签
+  state.characters = state.characters.map((c) =>
+    c.title?.trim() ? c : { ...c, title: defaultTitleFor(c.role, c.isProtagonist) },
+  );
   return state;
 }
 

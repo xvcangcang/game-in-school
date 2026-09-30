@@ -161,6 +161,13 @@ export interface Character {
   id: string;
   name: string;
   role: RoleId;
+  /**
+   * 自由填写的身份/职务，显示在名字后面，也会喂给 AI 当上下文。
+   * 与 role 的区别：role 是给引擎和事件库用的枚举（决定说话口气、能否参与某类事件），
+   * title 纯粹是给玩家看的、可以随便写（「转学生」「班长」「隔壁班来借书的」）。
+   * 为空时按 role 推一个默认值，见 game/character.ts 的 defaultTitleFor()。
+   */
+  title?: string;
   gender: Gender;
   personality: PersonalityId;
   appearance: Appearance;
@@ -354,5 +361,6 @@ export interface Settings {
  * 并在 app/save.ts 的 MIGRATIONS 里补一条迁移函数，否则老存档会读不出来。
  *
  * 1 → 初版
+ * 2 → Character 增加自由填写的 `title`（身份），迁移时按 role 补默认值
  */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;

@@ -23,6 +23,8 @@ export interface NewGameOptions {
   aiEnabled: boolean;
   protagonist: {
     name: string;
+    /** 自由填写的身份，例如「转学生」「班长」 */
+    title?: string;
     gender: Gender;
     personality: PersonalityId;
     appearance: Partial<Appearance>;
@@ -36,6 +38,7 @@ export function createNewGame(options: NewGameOptions): GameState {
     id: `player_${shortId('p').slice(3)}`,
     name: options.protagonist.name,
     role: 'classmate',
+    title: options.protagonist.title,
     gender: options.protagonist.gender,
     personality: options.protagonist.personality,
     appearance: options.protagonist.appearance,

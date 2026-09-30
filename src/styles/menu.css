@@ -704,6 +704,12 @@
   color: var(--c-text-dim);
 }
 
+/* 身份是玩家自己填的，给它一点视觉重量，和系统给的标签区分开 */
+.roster-title {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
 .roster-rel {
   font-size: 0.75em;
 }

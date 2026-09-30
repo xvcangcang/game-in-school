@@ -12,6 +12,7 @@ import { shortId } from '@/app/rng';
 export interface CreateCharacterInput {
   name: string;
   role: RoleId;
+  title?: string;
   gender?: Gender;
   personality?: PersonalityId;
   appearance?: Partial<Appearance>;
@@ -23,18 +24,34 @@ export interface CreateCharacterInput {
   id?: string;
 }
 
+/**
+ * 没填身份时按 role 推一个默认值。
+ * 主角默认叫「学生」——TA 也可能是转学生、班长，但那是玩家自己改的事。
+ */
+export function defaultTitleFor(role: RoleId, isProtagonist = false): string {
+  if (isProtagonist) return '学生';
+  return roleMeta(role).name;
+}
+
+/** 身份的最大长度，UI 和校验共用 */
+export const TITLE_MAX_LENGTH = 10;
+
 export function createCharacter(input: CreateCharacterInput): Character {
   const role = roleMeta(input.role);
+  const isProtagonist = input.isProtagonist ?? false;
+  const title = (input.title ?? '').trim().slice(0, TITLE_MAX_LENGTH);
+
   return {
     id: input.id ?? shortId('ch'),
     name: input.name.trim() || '无名同学',
     role: input.role,
+    title: title || defaultTitleFor(input.role, isProtagonist),
     gender: input.gender ?? 'n',
     personality: input.personality ?? 'ordinary',
     appearance: clampAppearance(input.appearance ?? {}),
     bio: input.bio?.trim() ?? '',
     relation: clampRelation(input.relation ?? role.baseRelation),
-    isProtagonist: input.isProtagonist ?? false,
+    isProtagonist,
     preset: input.preset ?? false,
     aiGenerated: input.aiGenerated ?? false,
   };
@@ -74,11 +91,16 @@ export function describeCharacter(c: Character): string {
   const role = roleMeta(c.role);
   const p = personalityMeta(c.personality);
   const bits = [
-    `${c.name}（${role.name}，${p.name}）`,
+    `${c.name}（${c.title || role.name}，${p.name}）`,
     role.promptHint,
     p.tags.join('、'),
   ];
   if (c.bio) bits.push(c.bio);
   bits.push(`当前对主角好感 ${c.relation}（${relationLabel(c.relation).name}）`);
   return bits.filter(Boolean).join('；');
+}
+
+/** 名字后面跟着的身份标签，UI 到处都在用 */
+export function displayTitle(c: Character): string {
+  return c.title?.trim() || roleMeta(c.role).name;
 }

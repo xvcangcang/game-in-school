@@ -19,7 +19,7 @@ import { clampAppearance, DEFAULT_APPEARANCE } from '@/data/appearances';
 import { DEFAULT_PROTAGONIST_F, DEFAULT_PROTAGONIST_M } from '@/data/presets';
 import { personalityMeta, PERSONALITY_LIST } from '@/data/personalities';
 import { ROLE_GROUPS, roleMeta } from '@/data/roles';
-import { createCharacter, relationLabel } from '@/game/character';
+import { createCharacter, displayTitle, relationLabel, TITLE_MAX_LENGTH } from '@/game/character';
 import { createNewGame } from '@/game/newGame';
 import type {
   Appearance,
@@ -44,6 +44,8 @@ interface Draft {
   aiEnabled: boolean;
   protagonist: {
     name: string;
+    /** 自由填写的身份，留空就用「学生」 */
+    title: string;
     gender: Gender;
     personality: PersonalityId;
     appearance: Appearance;
@@ -73,6 +75,7 @@ export function creationScene(): Scene {
         aiEnabled: p.aiEnabled,
         protagonist: {
           name: '',
+          title: '',
           gender: 'm',
           personality: 'ordinary',
           appearance: clampAppearance({ ...DEFAULT_PROTAGONIST_M }),
@@ -87,6 +90,7 @@ export function creationScene(): Scene {
         aiEnabled: settingsStore.get().ai.enabled,
         protagonist: {
           name: '',
+          title: '',
           gender: 'm',
           personality: 'ordinary',
           appearance: clampAppearance({ ...DEFAULT_PROTAGONIST_M }),
@@ -133,6 +137,30 @@ export function creationScene(): Scene {
       if (nextBtnRef) nextBtnRef.disabled = nameInput.value.trim().length === 0;
     });
     nameInput.addEventListener('keydown', (e) => e.stopPropagation());
+
+    // 身份：自由填写，和同学一样。role 仍然是隐藏的 'classmate'，title 才是玩家看到的那个标签。
+    const titleInput = h('input', {
+      class: 'pixel-input',
+      type: 'text',
+      maxlength: String(TITLE_MAX_LENGTH),
+      placeholder: '例如：转学生 / 班长 / 体育委员',
+      value: draft.protagonist.title ?? '',
+    });
+    titleInput.addEventListener('input', () => {
+      draft.protagonist.title = titleInput.value;
+    });
+    titleInput.addEventListener('keydown', (e) => e.stopPropagation());
+
+    const titleRow = h(
+      'section',
+      { class: 'form-section' },
+      h('h3', { class: 'section-title', text: '身份' }),
+      titleInput,
+      h('p', {
+        class: 'dim small-note',
+        text: '随便写。它会显示在你的名字后面，AI 写剧情时也会参考它。留空就是「学生」。',
+      }),
+    );
 
     const genderRow = h('div', { class: 'opt-row' });
     const genderButtons: HTMLButtonElement[] = [];
@@ -210,6 +238,7 @@ export function creationScene(): Scene {
         h('h3', { class: 'section-title', text: '姓名' }),
         nameInput,
       ),
+      titleRow,
       h('section', { class: 'form-section' }, h('h3', { class: 'section-title', text: '性别' }), genderRow),
       h(
         'section',
@@ -227,6 +256,8 @@ export function creationScene(): Scene {
 
     draft.npcs.forEach((npc, index) => {
       const rel = relationLabel(npc.relation);
+      const title = displayTitle(npc);
+      const roleName = roleMeta(npc.role).name;
       list.appendChild(
         h(
           'div',
@@ -235,7 +266,9 @@ export function creationScene(): Scene {
             'div',
             { class: 'roster-main' },
             h('span', { class: 'roster-name', text: npc.name }),
-            h('span', { class: 'roster-tag', text: roleMeta(npc.role).name }),
+            h('span', { class: 'roster-tag roster-title', text: title }),
+            // 身份和身份类别同名时（默认情况）就不重复显示了
+            title === roleName ? null : h('span', { class: 'roster-tag', text: roleName }),
             h('span', { class: 'roster-tag', text: personalityMeta(npc.personality).name }),
             h('span', { class: 'roster-rel', style: `color:${rel.color}`, text: `好感 ${npc.relation}（${rel.name}）` }),
           ),
@@ -343,6 +376,19 @@ export function creationScene(): Scene {
     });
     nameInput.addEventListener('keydown', (e) => e.stopPropagation());
 
+    // 身份：自由填写，和主角用的是同一个字段
+    const titleInput = h('input', {
+      class: 'pixel-input',
+      type: 'text',
+      maxlength: String(TITLE_MAX_LENGTH),
+      placeholder: '例如：班长 / 隔壁班来借书的',
+      value: working.title ?? '',
+    });
+    titleInput.addEventListener('input', () => {
+      working.title = titleInput.value;
+    });
+    titleInput.addEventListener('keydown', (e) => e.stopPropagation());
+
     const roleSelect = h('select', { class: 'pixel-input' });
     for (const group of ROLE_GROUPS) {
       const og = h('optgroup', { label: group.label });
@@ -419,13 +465,34 @@ export function creationScene(): Scene {
           h(
             'div',
             { class: 'form-grid' },
-            h('label', { class: 'field' }, h('span', { class: 'field-label', text: '身份' }), roleSelect),
+            h(
+              'label',
+              { class: 'field' },
+              h(
+                'span',
+                { class: 'field-label' },
+                '身份类别',
+                h('span', { class: 'field-hint dim', text: '决定 TA 说话的口气' }),
+              ),
+              roleSelect,
+            ),
             h(
               'label',
               { class: 'field' },
               h('span', { class: 'field-label', text: '性格' }),
               personalitySelect,
             ),
+          ),
+          h(
+            'label',
+            { class: 'field' },
+            h(
+              'span',
+              { class: 'field-label' },
+              '身份',
+              h('span', { class: 'field-hint dim', text: '随便写，留空就用身份类别' }),
+            ),
+            titleInput,
           ),
           h(
             'label',
@@ -504,14 +571,22 @@ export function creationScene(): Scene {
 
     const pieces: HTMLElement[] = [];
     if (mode === 'studio') {
+      /*
+       * 工坊模式**直接进阵容页**。
+       * 之前没有分步导航，step 永远停在 0，于是只能看到主角那一步——
+       * 而工坊模式下主角的改动根本不会保存（阵容里只有 NPC），纯属死胡同。
+       * 主角是在「新游戏」里创建的，工坊负责的是班里的其他角色。
+       */
       pieces.push(
         h('p', {
           class: 'dim small-note',
-          text: '这里编辑的是预设阵容，开新游戏时会默认使用这套名单。改动保存在本机浏览器里。',
+          text: '这里管理的是开新游戏时会用到的预设阵容（同学、老师、家人）。改动存在本机浏览器里。主角在「新游戏」里创建。',
         }),
       );
+      pieces.push(buildRosterStep());
+    } else {
+      pieces.push(step === 0 ? buildIdentityStep() : step === 1 ? buildAppearanceStep() : buildRosterStep());
     }
-    pieces.push(step === 0 ? buildIdentityStep() : step === 1 ? buildAppearanceStep() : buildRosterStep());
     bodyEl.replaceChildren(...pieces);
 
     const canFinish =
@@ -589,6 +664,7 @@ export function creationScene(): Scene {
       aiEnabled: draft.aiEnabled,
       protagonist: {
         name: draft.protagonist.name.trim() || '无名同学',
+        title: draft.protagonist.title,
         gender: draft.protagonist.gender,
         personality: draft.protagonist.personality,
         appearance: draft.protagonist.appearance,

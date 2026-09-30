@@ -27,6 +27,7 @@ export function loadRoster(): Character[] {
           id: typeof c.id === 'string' ? c.id : undefined,
           name: typeof c.name === 'string' ? c.name : '无名同学',
           role: (c.role as Character['role']) ?? 'classmate',
+          title: typeof c.title === 'string' ? c.title : undefined,
           gender: (c.gender as Character['gender']) ?? 'n',
           personality: (c.personality as Character['personality']) ?? 'ordinary',
           appearance: (c.appearance as Character['appearance']) ?? {},
