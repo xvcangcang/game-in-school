@@ -1,0 +1,63 @@
+/* 场景专用样式。通用组件在 global.css。 */
+
+.scene-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------- 启动画面 ---------- */
+
+.boot-scene {
+  margin: auto;
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  padding: clamp(10px, 3vw, 20px);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.8vw, 12px);
+  overflow-y: auto;
+}
+
+.boot-sub {
+  margin: 0;
+  letter-spacing: 0.2em;
+}
+
+.boot-checks {
+  width: 100%;
+  text-align: left;
+  background: rgba(13, 17, 23, 0.55);
+  border: 2px solid var(--c-panel-2);
+  padding: 8px 10px;
+  font-size: 0.85em;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.boot-check .ok {
+  color: var(--c-accent-2);
+}
+
+.boot-check .bad {
+  color: var(--c-danger);
+}
+
+.boot-ver {
+  margin: 0;
+  font-size: 0.75em;
+  letter-spacing: 0.08em;
+}
+
+/* 竖屏手机上把自检信息折叠一点，免得挤掉按钮 */
+@media (max-height: 420px) {
+  .boot-checks {
+    display: none;
+  }
+}
