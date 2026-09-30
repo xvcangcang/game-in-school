@@ -7,15 +7,15 @@
  * - 坏事件保底：连续出现 2 个负面事件后，下一次强制挑非负面事件。
  */
 
-import { ALL_EVENTS } from '@/data/events';
+import { ALL_EVENTS, EVENT_BY_ID, MAIN_EVENTS, SUB_EVENTS } from '@/data/events';
 import { makeFillerEvent } from '@/data/fillers';
-import { checkCondition, slotIdAt } from '@/game/conditions';
+import { checkCondition, slotIdAt, slotMatches } from '@/game/conditions';
 import { applyEffects, type EffectReport } from '@/game/effects';
 import { advanceSlot } from '@/game/schedule';
 import { referencedCharacterIds } from '@/game/text';
 import type { Rng } from '@/app/rng';
-import type { Choice, GameEvent, GameState, LogEntry, Stats } from '@/game/types';
-import { DIFFICULTY_META, SLOT_META } from '@/game/types';
+import type { Choice, GameEvent, GameState, LogEntry, SlotId, Stats } from '@/game/types';
+import { DIFFICULTY_META } from '@/game/types';
 
 /** 连续几个负面事件之后强制来点好事 */
 export const MAX_BAD_STREAK = 2;
@@ -57,10 +57,13 @@ export function referencedIdsOf(event: GameEvent): string[] {
 export function eventEligible(state: GameState, event: GameEvent): boolean {
   if (event.phase && event.phase.length > 0 && !event.phase.includes(state.phase)) return false;
 
-  // 顶层 slots：限定早自习/午休之类的时段。
-  // 注意这是「与」require.slots 独立的一层，两处都要判，否则数据里写了 slots 也不生效。
+  /*
+   * 顶层 slots：限定某个时段。
+   * 数据里一般写大段（am/pm…），也可以精确到某一节（eveningStudy）。
+   * 注意这是「与」require.slots 独立的一层，两处都要判。
+   */
   if (event.slots && event.slots.length > 0) {
-    if (!event.slots.includes(slotIdAt(state.slotIndex))) return false;
+    if (!slotMatches(state.slotIndex, event.slots)) return false;
   }
 
   if (!checkCondition(state, event.require)) return false;
@@ -97,7 +100,9 @@ function eventWeight(state: GameState, event: GameEvent): number {
  * 挑一个事件。挑不到就返回冷场填充；连冷场都不允许时返回 null。
  */
 export function pickEvent(state: GameState, rng: Rng, options: PickOptions = {}): GameEvent {
-  const pool = options.pool ?? ALL_EVENTS;
+  // 默认只从「主线事件」里挑。小剧情（SUB_EVENTS）不进这个池子，
+  // 它们只由 resolveChoice 结算时按大剧情挂出来的 subEvents / followUpId 触发。
+  const pool = options.pool ?? MAIN_EVENTS;
 
   let candidates = pool.filter((e) => eventEligible(state, e));
 
@@ -137,9 +142,8 @@ export function markEventSeen(state: GameState, event: GameEvent): GameState {
   };
 }
 
-function slotKeyOf(state: GameState): keyof typeof SLOT_META {
-  const order: (keyof typeof SLOT_META)[] = ['early', 'am', 'noon', 'pm', 'evening'];
-  return order[Math.max(0, Math.min(order.length - 1, state.slotIndex))];
+function slotKeyOf(state: GameState): SlotId {
+  return slotIdAt(state.slotIndex);
 }
 
 export interface ResolveResult {
@@ -153,10 +157,68 @@ export interface ResolveResult {
   /** 刚结束那一天的结算素材，见 schedule.ts 的 AdvanceResult.endedDay */
   endedDay?: { day: number; statsBefore: Stats; statsAfter: Stats };
   termEnded: boolean;
+  /**
+   * 有一段**小剧情**要接着演（同一时段内，不推进时间）。
+   * 有值时 advanced 一定是 false —— 这一段还没结束。
+   */
+  followUp?: GameEvent;
 }
 
 /**
- * 结算一个选择：应用效果 → 写历史 → 推进时段。
+ * 结算时决定"要不要接着演一段小剧情"。
+ *
+ * 三条路，优先级从高到低：
+ *  1. 选项里显式写了 `followUpId` —— 作者钦定
+ *  2. 事件挂了 `subEvents` 池 —— 从池子里挑一段当时符合条件的
+ *  3. 什么都没挂 —— 有 `SUB_EVENT_CHANCE` 的概率从**全局小剧情池**里挑一段
+ *
+ * 第 3 条是关键：不然「每个大剧情都能分支」就得给 64 条主线一条条挂池子，
+ * 而且新写的主线很容易忘了挂，功能等于没有。
+ *
+ * 小剧情本身不会再套小剧情（看 event.isSubEvent），所以不会无限递归。
+ */
+const SUB_EVENT_CHANCE = 0.38;
+
+function pickFollowUp(
+  state: GameState,
+  event: GameEvent,
+  choice: Choice,
+  rng: Rng,
+): GameEvent | undefined {
+  // 小剧情演完就结束，不再往下套
+  if (event.isSubEvent) return undefined;
+
+  // 1）显式指定
+  const forcedId = choice.effects.followUpId;
+  if (forcedId) {
+    const forced = EVENT_BY_ID[forcedId];
+    if (forced && eventEligible(state, forced)) return forced;
+    if (forced) {
+      console.warn(`[engine] followUpId「${forcedId}」当前不满足条件，已忽略`);
+    } else {
+      console.warn(`[engine] followUpId「${forcedId}」找不到对应事件`);
+    }
+  }
+
+  // 2）事件自己的小剧情池；没有就用 3）全局池
+  const explicit = event.subEvents ?? [];
+  const useGlobal = explicit.length === 0;
+  if (useGlobal && !rng.chance(SUB_EVENT_CHANCE)) return undefined;
+
+  const source = useGlobal ? SUB_EVENTS : explicit.map((id) => EVENT_BY_ID[id]).filter(Boolean);
+
+  const candidates = source.filter((e): e is GameEvent => Boolean(e)).filter((e) => eventEligible(state, e));
+  if (candidates.length === 0) return undefined;
+
+  // 没看过的优先，权重照常算
+  const fresh = candidates.filter((e) => !state.seenEventIds.includes(e.id));
+  const pool = fresh.length > 0 ? fresh : candidates;
+
+  return pool[rng.weightedIndex(pool.map((e) => Math.max(1, e.weight)))] ?? pool[0];
+}
+
+/**
+ * 结算一个选择：应用效果 → 写历史 → （接着演小剧情 | 推进时段）。
  */
 export function resolveChoice(
   state: GameState,
@@ -180,6 +242,22 @@ export function resolveChoice(
 
   next = { ...next, history: [...next.history, entry].slice(-200), updatedAt: Date.now() };
 
+  // 先看有没有小剧情要接。有的话这一段就还没结束，时段不动。
+  // 注意用的是**结算后**的 state 去判定，这样「选完之后条件才满足」的小剧情也能触发。
+  const followUp = choice.effects.advance === false ? undefined : pickFollowUp(next, event, choice, rng);
+
+  if (followUp) {
+    return {
+      state: next,
+      report: withChoiceApplied.report,
+      choice,
+      advanced: false,
+      newDay: false,
+      termEnded: false,
+      followUp,
+    };
+  }
+
   const shouldAdvance = choice.effects.advance !== false;
   let advanced = false;
   let newDay = false;
@@ -195,7 +273,6 @@ export function resolveChoice(
     endedDay = res.endedDay;
   }
 
-  void rng; // 目前结算不需要随机，保留参数是为了以后加随机结果
   return {
     state: next,
     report: withChoiceApplied.report,

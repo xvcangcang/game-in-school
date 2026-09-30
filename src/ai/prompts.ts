@@ -10,6 +10,7 @@
 import { describeCharacter, relationLabel } from '@/game/character';
 import { npcs } from '@/game/character';
 import { describeTime } from '@/game/schedule';
+import { slotIdAt } from '@/game/conditions';
 import { renderTemplate } from '@/game/text';
 import type { DailySummary } from '@/game/dailySummary';
 import type { GameState, StatKey } from '@/game/types';
@@ -95,12 +96,7 @@ ${recent || '（这是开局第一个时段）'}
 【不要重复这些已经出现过的事件标题】
 ${recentTitles.length ? recentTitles.join('、') : '（无）'}
 
-请生成这${SLOT_META[slotKeyOf(state)].name}发生的一件小事。只输出 JSON。`;
-}
-
-function slotKeyOf(state: GameState): keyof typeof SLOT_META {
-  const order: (keyof typeof SLOT_META)[] = ['early', 'am', 'noon', 'pm', 'evening'];
-  return order[Math.max(0, Math.min(order.length - 1, state.slotIndex))];
+请生成「${SLOT_META[slotIdAt(state.slotIndex)].name}」这段时间里发生的一件小事。只输出 JSON。`;
 }
 
 /** 重试时用的提示词：把上一次的失败原因也告诉模型 */

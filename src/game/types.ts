@@ -13,8 +13,36 @@
 /** 学段：初一 / 初二 / 初三 */
 export type PhaseId = 'g1' | 'g2' | 'g3';
 
-/** 一天中的五个时段 */
-export type SlotId = 'early' | 'am' | 'noon' | 'pm' | 'evening';
+/**
+ * 一天里的具体时段——**推进的最小单位**，顺序就是 SLOT_ORDER 的顺序。
+ * 一天的流程：早读 → 四节课（第二节课后跑操）→ 吃饭 → 午休 → 下午四节 → 晚自习。
+ */
+export type SlotId =
+  | 'morningReading'
+  | 'period1'
+  | 'period2'
+  | 'morningRun'
+  | 'period3'
+  | 'period4'
+  | 'lunch'
+  | 'noonBreak'
+  | 'period5'
+  | 'period6'
+  | 'period7'
+  | 'period8'
+  | 'eveningStudy';
+
+/**
+ * 「大段」。**事件库按它来限定时间**，而不是写死到某一节课。
+ *
+ * 为什么分两层：如果事件直接写 `period3`，那"上午发生的事"就得在 5 个 id 里各写一遍，
+ * 语文老师拖堂也不可能只在第三节。所以数据里写大段（am / pm …），
+ * 引擎再把当前 SlotId 映射成大段去匹配。想精确到某一节时，事件里也可以直接写 SlotId。
+ */
+export type TimeBand = 'early' | 'am' | 'noon' | 'pm' | 'evening';
+
+/** 事件/条件里限定时间时可以写大段，也可以直接写具体某一节 */
+export type SlotSpec = TimeBand | SlotId;
 
 /** 难度 */
 export type Difficulty = 'relax' | 'normal' | 'hard';
@@ -39,14 +67,51 @@ export const PHASE_META: Record<PhaseId, { name: string; subtitle: string; desc:
   },
 };
 
-export const SLOT_ORDER: SlotId[] = ['early', 'am', 'noon', 'pm', 'evening'];
+/** 一天的时段顺序。改这里就等于改一天的流程，别处不用动。 */
+export const SLOT_ORDER: SlotId[] = [
+  'morningReading',
+  'period1',
+  'period2',
+  'morningRun',
+  'period3',
+  'period4',
+  'lunch',
+  'noonBreak',
+  'period5',
+  'period6',
+  'period7',
+  'period8',
+  'eveningStudy',
+];
 
-export const SLOT_META: Record<SlotId, { name: string; icon: string }> = {
-  early: { name: '早自习', icon: '🌅' },
-  am: { name: '上午课', icon: '📖' },
-  noon: { name: '午休', icon: '🍚' },
-  pm: { name: '下午课', icon: '🏃' },
-  evening: { name: '晚自习', icon: '🌙' },
+export const SLOT_META: Record<SlotId, { name: string; icon: string; band: TimeBand }> = {
+  morningReading: { name: '早读', icon: '🌅', band: 'early' },
+  period1: { name: '第一节课', icon: '📖', band: 'am' },
+  period2: { name: '第二节课', icon: '📖', band: 'am' },
+  morningRun: { name: '跑操', icon: '🏃', band: 'am' },
+  period3: { name: '第三节课', icon: '📖', band: 'am' },
+  period4: { name: '第四节课', icon: '📖', band: 'am' },
+  lunch: { name: '吃饭', icon: '🍚', band: 'noon' },
+  noonBreak: { name: '午休', icon: '😴', band: 'noon' },
+  period5: { name: '下午第一节', icon: '📐', band: 'pm' },
+  period6: { name: '下午第二节', icon: '📐', band: 'pm' },
+  period7: { name: '下午第三节', icon: '📐', band: 'pm' },
+  period8: { name: '下午第四节·班会', icon: '📋', band: 'pm' },
+  eveningStudy: { name: '晚自习', icon: '🌙', band: 'evening' },
+};
+
+/** SlotId → 所属大段。事件匹配时间时用得到。 */
+export const SLOT_BAND: Record<SlotId, TimeBand> = Object.fromEntries(
+  SLOT_ORDER.map((s) => [s, SLOT_META[s].band]),
+) as Record<SlotId, TimeBand>;
+
+/** 大段的中文名，UI 上偶尔要显示 */
+export const BAND_NAME: Record<TimeBand, string> = {
+  early: '早读',
+  am: '上午',
+  noon: '中午',
+  pm: '下午',
+  evening: '晚上',
 };
 
 /** 事件发生的场景。渲染层按它选背景图。 */
@@ -209,7 +274,8 @@ export interface Condition {
   /** 必须一个都没有 */
   notFlags?: string[];
   phase?: PhaseId[];
-  slots?: SlotId[];
+  /** 限定大段（am/pm…）或具体某一节；留空表示不限 */
+  slots?: SlotSpec[];
   /** 需要至少几名自定义 NPC 在场 */
   minCustomNpc?: number;
 }
@@ -223,7 +289,13 @@ export interface Effects {
   flags?: string[];
   /** 移除标记 */
   clearFlags?: string[];
-  /** 是否推进到下一时段（默认 true） */
+  /**
+   * 选完这一项之后，**接着演哪一段小剧情**（事件 id）。
+   * 小剧情在同一天同一时段里发生，**不推进时段**——这就是「大剧情分支出小剧情」。
+   * 留空则走事件自己的 subEvents 池。
+   */
+  followUpId?: string;
+  /** 是否推进到下一时段（默认 true）。设成 false 就停在原地，适合"还有下文"的选择 */
   advance?: boolean;
 }
 
@@ -264,8 +336,16 @@ export interface GameEvent {
   scene?: SceneKind;
   /** 适用学段，留空 = 全部 */
   phase?: PhaseId[];
-  /** 适用时段，留空 = 全部 */
-  slots?: SlotId[];
+  /** 适用时段：可以写大段（am/pm…），也可以写具体某一节；留空 = 任何时段 */
+  slots?: SlotSpec[];
+  /**
+   * 这一段主线剧情可能带出的**小剧情池**（事件 id）。
+   * 玩家做完选择后，引擎会从里面挑一段符合条件的小剧情接着演，**不推进时段**。
+   * 用于「上课上到一半同桌偷偷跟你说话」这类插曲。
+   */
+  subEvents?: string[];
+  /** 是不是小剧情本身。小剧情不会再套一层小剧情，看完就推进时段。 */
+  isSubEvent?: boolean;
   require?: Condition;
   choices: Choice[];
 }
@@ -379,5 +459,7 @@ export interface Settings {
  * 2 → Character 增加自由填写的 `title`（身份），迁移时按 role 补默认值
  * 3 → GameState 增加 `dayStartStats`（日终结算用），迁移时用当前属性兜底
  * 4 → Character 增加自由填写的 `setting`（交给 AI 的设定），迁移时补空串
+ * 5 → 时段从 5 个细分成 13 个（早读/第一节课/…/晚自习）：
+ *     `history[].slot` 与 `slotIndex` 都要按老编号换算，见 MIGRATIONS[4]
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;

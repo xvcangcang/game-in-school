@@ -93,6 +93,9 @@ export function playScene(): Scene {
   /** 这一天恰好也是学期最后一天时，先看日结再看成绩单 */
   let pendingTerm = false;
 
+  /** 这一段大剧情接下来要演的小剧情（点「接着看」时才播） */
+  let pendingFollowUp: GameEvent | null = null;
+
   let ctxRef: SceneContext | null = null;
   let mounted = false;
 
@@ -129,6 +132,7 @@ export function playScene(): Scene {
     lastTickChars = 0;
     lastResultText = '';
     resultLines = [];
+    pendingFollowUp = null;
     mode = 'event';
 
     // 要开 AI 就先显示"正在编剧情"；同时先判断清楚"这一段凭什么不是 AI 写的"
@@ -197,6 +201,12 @@ export function playScene(): Scene {
     if (state.day !== previousDay) sfx.bell();
 
     /*
+     * 有大剧情分支出来的小剧情：先把这一选择的结果给玩家看完，
+     * 点「接着看」再演小剧情，**时段不动**（这一段还没结束）。
+     */
+    pendingFollowUp = result.followUp ?? null;
+
+    /*
      * 跨天了 → 先看日终结算（灰屏大字 + 当天汇总）。
      * 这一天刚好是学期最后一天时，pendingTerm 记下来，日结看完再进成绩单。
      */
@@ -219,6 +229,37 @@ export function playScene(): Scene {
       mode = 'result';
     }
     renderAll();
+  }
+
+  /**
+   * 演一段小剧情：接替当前这一幕，**不推进时段**。
+   * 和小剧情本身会不会再分出小剧情无关——引擎已经保证小剧情不再套娃。
+   */
+  function playFollowUp(event: GameEvent): void {
+    if (!state) return;
+    current = event;
+    state = markEventSeen(state, event);
+    gameStore.set(state);
+
+    fullText = renderTemplate(event.text, state);
+    typedChars = 0;
+    lastTickChars = 0;
+    lastResultText = '';
+    resultLines = [];
+    mode = 'event';
+    unlockEvent(event.id);
+    renderAll();
+  }
+
+  function continueFromResult(): void {
+    if (mode !== 'result') return;
+    const next = pendingFollowUp;
+    pendingFollowUp = null;
+    if (next) {
+      playFollowUp(next);
+      return;
+    }
+    void nextTurn();
   }
 
   /* ------------------------------------------------------------------ *
@@ -568,8 +609,9 @@ export function playScene(): Scene {
           h('button', {
             class: 'pixel-btn pixel-btn--primary',
             type: 'button',
-            text: '继续 →',
-            onClick: () => void nextTurn(),
+            // 还有小剧情要演时说清楚，别让玩家以为点了就进入下一节课
+            text: pendingFollowUp ? '接着看 →' : '继续 →',
+            onClick: continueFromResult,
           }),
         ),
       );
@@ -641,6 +683,8 @@ export function playScene(): Scene {
         'div',
         { class: 'dialog-title' },
         h('span', { text: current.title }),
+        // 小剧情标一下「插曲」，玩家能感觉到这是主线中间夹的一小段
+        current.isSubEvent ? h('span', { class: 'sub-badge', text: '插曲' }) : null,
         current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
       ),
     ];

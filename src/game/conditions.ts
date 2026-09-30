@@ -4,8 +4,8 @@
  */
 
 import { npcs } from '@/game/character';
-import type { Condition, GameState, SlotId, StatKey } from '@/game/types';
-import { SLOT_ORDER, STAT_KEYS } from '@/game/types';
+import type { Condition, GameState, SlotId, SlotSpec, StatKey, TimeBand } from '@/game/types';
+import { BAND_NAME, SLOT_BAND, SLOT_META, SLOT_ORDER, STAT_KEYS } from '@/game/types';
 
 /** 角色 id 不存在时怎么算：默认「不满足」，避免写了错 id 就无条件通过 */
 export interface ConditionOptions {
@@ -28,8 +28,7 @@ export function checkCondition(
 
   /* ---- 时段 ---- */
   if (cond.slots && cond.slots.length > 0) {
-    const slot = slotIdAt(state.slotIndex);
-    if (!cond.slots.includes(slot)) return false;
+    if (!slotMatches(state.slotIndex, cond.slots)) return false;
   }
 
   /* ---- 属性下限 ---- */
@@ -91,6 +90,24 @@ export function checkCondition(
 /** 时段下标 → 时段 id。放这里避免各处重复 import。 */
 export function slotIdAt(index: number): SlotId {
   return SLOT_ORDER[Math.max(0, Math.min(SLOT_ORDER.length - 1, index))];
+}
+
+/**
+ * 当前时段是否命中限定条件。
+ *
+ * 条件里既可以写大段（'am' 表示上午任意一节），也可以写具体某一节（'period3'），
+ * 两者混用也允许——「大剧情分支出小剧情」里常要精确定位到「晚自习」。
+ */
+export function slotMatches(slotIndex: number, specs: SlotSpec[]): boolean {
+  const slot = slotIdAt(slotIndex);
+  const band = SLOT_BAND[slot];
+  return specs.some((spec) => spec === slot || spec === band);
+}
+
+/** SlotSpec → 给人看的名字（调试与提示用） */
+export function slotSpecName(spec: SlotSpec): string {
+  if (spec in SLOT_META) return SLOT_META[spec as SlotId].name;
+  return BAND_NAME[spec as TimeBand] ?? spec;
 }
 
 /**

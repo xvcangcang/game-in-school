@@ -61,6 +61,38 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
       }),
     };
   },
+
+  /**
+   * 4 → 5：时段从 5 个细分成 13 个。
+   * 老的 `slotIndex`(0~4) 和 `history[].slot`('early'…) 都要换算，否则读档后
+   * 进度会跳到一个完全不对的时段、日终结算里也会显示「(未知时段)」。
+   */
+  4: (raw) => {
+    /** 老编号 / 老 id → 新编号 / 新 id：映射到该大段的第一节 */
+    const indexMap = [0, 1, 6, 8, 12]; // early→早读, am→第一节课, noon→吃饭, pm→下午第一节, evening→晚自习
+    const idMap: Record<string, string> = {
+      early: 'morningReading',
+      am: 'period1',
+      noon: 'lunch',
+      pm: 'period5',
+      evening: 'eveningStudy',
+    };
+
+    const oldIndex = typeof raw.slotIndex === 'number' ? raw.slotIndex : 0;
+    const history = Array.isArray(raw.history) ? raw.history : [];
+
+    return {
+      ...raw,
+      version: 5,
+      slotIndex: indexMap[Math.max(0, Math.min(indexMap.length - 1, oldIndex))] ?? 0,
+      history: history.map((entry) => {
+        if (typeof entry !== 'object' || entry === null) return entry;
+        const log = entry as Record<string, unknown>;
+        const oldSlot = typeof log.slot === 'string' ? log.slot : 'am';
+        return { ...log, slot: idMap[oldSlot] ?? 'period1' };
+      }),
+    };
+  },
 };
 
 export class SaveError extends Error {

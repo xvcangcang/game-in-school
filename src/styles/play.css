@@ -134,6 +134,17 @@
   letter-spacing: 0.1em;
 }
 
+/* 插曲标记：主线中间夹的一小段 */
+.sub-badge {
+  margin-left: 8px;
+  font-size: 0.62em;
+  padding: 1px 5px;
+  vertical-align: middle;
+  color: var(--c-ink);
+  background: var(--c-sky);
+  letter-spacing: 0.1em;
+}
+
 /* 「AI 正在编剧情」的省略号动画 */
 .dialog-text.thinking {
   display: flex;

@@ -8,11 +8,18 @@
 
 import { applyStatDelta } from '@/game/stats';
 import type { GameState, SlotId, Stats } from '@/game/types';
-import { SLOT_ORDER } from '@/game/types';
+import { SLOT_META, SLOT_ORDER } from '@/game/types';
 
 export const SLOTS_PER_DAY = SLOT_ORDER.length;
 export const DAYS_PER_WEEK = 5;
-export const WEEKS_PER_TERM = 16;
+/**
+ * 一学期几周。
+ *
+ * 原来是 16 周，那时一天只有 5 个时段（一学期 400 段剧情）。
+ * 现在一天 13 个时段，16 周会变成 1040 段——一学期要玩好几个小时，太长了。
+ * 所以缩到 8 周，让一学期回到 500 段左右，总时长和以前差不多。
+ */
+export const WEEKS_PER_TERM = 8;
 
 export function slotIdOf(state: GameState): SlotId {
   return SLOT_ORDER[Math.max(0, Math.min(SLOT_ORDER.length - 1, state.slotIndex))];
@@ -118,18 +125,10 @@ function beginNewWeek(state: GameState): GameState {
 /** 「第 3 周 周二 · 午休」这样的可读时间 */
 export function describeTime(state: GameState): string {
   const weekday = ['周一', '周二', '周三', '周四', '周五'][(state.day - 1) % DAYS_PER_WEEK] ?? '周末';
-  const slotNames: Record<SlotId, string> = {
-    early: '早自习',
-    am: '上午课',
-    noon: '午休',
-    pm: '下午课',
-    evening: '晚自习',
-  };
-  return `第 ${state.week} 周 ${weekday} · ${slotNames[slotIdOf(state)]}`;
+  return `第 ${state.week} 周 ${weekday} · ${SLOT_META[slotIdOf(state)].name}`;
 }
 
-/** 晚自习和早自习算「夜里」，渲染层据此压暗画面 */
+/** 晚自习才算「夜里」，渲染层据此压暗画面 */
 export function isNight(state: GameState): boolean {
-  const slot = slotIdOf(state);
-  return slot === 'evening' || slot === 'early';
+  return slotIdOf(state) === 'eveningStudy';
 }
