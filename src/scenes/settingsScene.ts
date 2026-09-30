@@ -7,6 +7,7 @@
  *  - 直连 + 自己填 Key：纯静态部署（GitHub Pages 等）时的退路。
  */
 
+import { pingAi } from '@/ai/chat';
 import { settingsStore } from '@/app/state';
 import type { Scene, SceneContext } from '@/app/router';
 import { C } from '@/render/palette';
@@ -225,12 +226,25 @@ export function settingsScene(): Scene {
               h(
                 'div',
                 { class: 'row-inline' },
-                h('button', {
-                  class: 'pixel-btn',
-                  type: 'button',
-                  text: '测试连接',
-                  onClick: () => toast?.show('连通性测试将在 M6（AI 集成）里接上', 'info'),
-                }),
+                (() => {
+                  const btn = h('button', {
+                    class: 'pixel-btn',
+                    type: 'button',
+                    text: '测试连接',
+                  });
+                  btn.addEventListener('click', async () => {
+                    btn.disabled = true;
+                    const original = btn.textContent;
+                    btn.textContent = '测试中…';
+                    toast?.show('正在请求模型，最多等 12 秒', 'info');
+                    const result = await pingAi();
+                    btn.textContent = original;
+                    btn.disabled = false;
+                    toast?.show(result.message, result.ok ? 'ok' : 'error');
+                  });
+                  return btn;
+                })(),
+                h('span', { class: 'dim small-note', text: '发一个最小请求验证 Key、地址和模型名。' }),
               ),
             ),
           ),

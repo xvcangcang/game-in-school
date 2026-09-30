@@ -40,9 +40,18 @@ try {
   await page.setViewport({ width: 1280, height: 800 });
 
   const errors = [];
+  /** 网络层的 404/503 属于「可预期的降级」（比如服务端没配 Key），单独统计，不算失败 */
+  const networkNoise = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('favicon')) errors.push(m.text());
+    if (m.type() !== 'error') return;
+    const text = m.text();
+    if (text.includes('favicon')) return;
+    if (/Failed to load resource/.test(text)) {
+      networkNoise.push(text);
+      return;
+    }
+    errors.push(text);
   });
 
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -155,6 +164,10 @@ try {
     console.log(badRel.length === 0 ? '好感范围：OK' : `好感越界：${JSON.stringify(badRel)}`);
   } else {
     console.log('没有读到存档，可能是流程没走通');
+  }
+
+  if (networkNoise.length) {
+    console.log(`网络降级次数：${networkNoise.length}（多数是服务端没配 Key 时的 503，属正常降级）`);
   }
 
   if (errors.length) {

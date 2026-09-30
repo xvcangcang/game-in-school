@@ -95,16 +95,15 @@ export function pickEvent(state: GameState, rng: Rng, options: PickOptions = {})
 
 /** 标记事件已发生：记冷却、记已见、累计坏事件连击 */
 export function markEventSeen(state: GameState, event: GameEvent): GameState {
-  const lastSlot = SLOT_META[slotKeyOf(state)].name;
-  void lastSlot;
-
   return {
     ...state,
-    seenEventIds: state.seenEventIds.includes(event.id)
-      ? state.seenEventIds
-      : [...state.seenEventIds, event.id],
+    // AI 事件 id 每次都不同，记进 seenEventIds 只会把存档撑大，没有意义
+    seenEventIds:
+      event.source === 'builtin' && !state.seenEventIds.includes(event.id)
+        ? [...state.seenEventIds, event.id]
+        : state.seenEventIds,
     cooldowns:
-      typeof event.cooldownDays === 'number'
+      event.source === 'builtin' && typeof event.cooldownDays === 'number'
         ? { ...state.cooldowns, [event.id]: state.day + event.cooldownDays }
         : state.cooldowns,
     badStreak: event.tone === 'bad' ? state.badStreak + 1 : 0,

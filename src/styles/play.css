@@ -123,6 +123,67 @@
   font-size: 0.8em;
 }
 
+.play-talk-btn {
+  min-height: 34px;
+  padding: 2px 12px;
+  font-size: 0.8em;
+  background: var(--c-accent-2);
+  color: var(--c-ink);
+}
+
+.play-talk-btn:hover {
+  background: #8fd39a;
+}
+
+/* AI 标记：让玩家知道这段是现场生成的 */
+.ai-badge {
+  margin-left: 8px;
+  font-size: 0.62em;
+  padding: 1px 5px;
+  vertical-align: middle;
+  color: var(--c-ink);
+  background: var(--c-accent-2);
+  letter-spacing: 0.1em;
+}
+
+/* 「AI 正在编剧情」的省略号动画 */
+.dialog-text.thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dialog-text.thinking .dot {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.dialog-text.thinking .dot span {
+  width: 6px;
+  height: 6px;
+  background: var(--c-accent);
+  animation: dot-blink 1.2s infinite;
+}
+
+.dialog-text.thinking .dot span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dialog-text.thinking .dot span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-blink {
+  0%,
+  60%,
+  100% {
+    opacity: 0.2;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
 /* ---------------- 画面区（Canvas 在背后） ---------------- */
 
 .play-stage {
@@ -265,6 +326,92 @@
   text-shadow: 2px 2px 0 var(--c-ink);
 }
 
+/* ---------------- NPC 聊天面板 ---------------- */
+
+.play-chat {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 100%);
+  width: min(720px, 100%);
+  max-height: 70%;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: clamp(8px, 2vw, 14px);
+  background: rgba(10, 15, 20, 0.97);
+  border: 3px solid var(--c-accent-2);
+  box-shadow: 0 -4px 0 0 var(--c-ink);
+  z-index: 5;
+}
+
+.play-chat.is-open {
+  display: flex;
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--c-panel-2);
+  padding-bottom: 4px;
+}
+
+.chat-title {
+  color: var(--c-accent-2);
+  font-size: 0.92em;
+}
+
+.chat-close {
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  font-size: 0.8em;
+}
+
+.chat-log {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+}
+
+.chat-bubble {
+  max-width: 84%;
+  padding: 6px 10px;
+  font-size: 0.88em;
+  line-height: 1.6;
+  border: 2px solid var(--c-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-bubble.is-me {
+  align-self: flex-end;
+  background: var(--c-panel-2);
+}
+
+.chat-bubble.is-npc {
+  align-self: flex-start;
+  background: var(--c-panel);
+  border-color: var(--c-accent-2);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-input {
+  flex: 1 1 auto;
+  min-height: 40px;
+}
+
 /* ---------------- 适配 ---------------- */
 
 /* 竖屏：画面在上方独占一条，对话框直接铺满剩下的空间 */
@@ -277,7 +424,8 @@
   max-height: none;
 }
 
-@media (max-width: 1180px) {
+/* 顶栏还要放「说话 / 菜单」两个按钮，留够位置才显示完整的属性名 */
+@media (max-width: 1400px) {
   .stat-name {
     display: none;
   }

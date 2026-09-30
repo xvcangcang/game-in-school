@@ -11,6 +11,7 @@ import '@/styles/play.css';
 
 import { Router } from '@/app/router';
 import { settingsStore } from '@/app/state';
+import { resetAiBreaker } from '@/ai/client';
 import { initStage } from '@/render/canvas';
 import { aboutScene } from '@/scenes/aboutScene';
 import { bootScene } from '@/scenes/boot';
@@ -37,7 +38,11 @@ function applyUiScale(scale: number): void {
   document.documentElement.style.setProperty('--ui-scale', String(scale));
 }
 applyUiScale(settingsStore.get().uiScale);
-settingsStore.subscribe((s) => applyUiScale(s.uiScale));
+settingsStore.subscribe((s) => {
+  applyUiScale(s.uiScale);
+  // 玩家刚改过 AI 配置，之前因为没 Key / 超时被熔断的请求应该立刻允许重试
+  resetAiBreaker();
+});
 
 const router = new Router(canvas, stage.ctx)
   .register('boot', bootScene)

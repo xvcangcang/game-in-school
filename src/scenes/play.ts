@@ -3,12 +3,18 @@
  *
  * 结构上分两层：
  *  - Canvas：画当前事件发生的场景（教室/走廊/操场…）和在场角色
- *  - DOM：顶部状态条、对话框、选项按钮（中文文本一律走 DOM）
+ *  - DOM：顶部状态条、对话框、选项按钮、NPC 聊天面板（中文文本一律走 DOM）
  *
  * 流程：挑事件 → 打字机显示正文 → 玩家选择 → 显示结果与数值变化 → 推进时段 → 回到第一步。
- * 每次选择后自动存档（写回开局/读档用的那个存档位）。
+ *
+ * 事件来源是「双模式」：
+ *  - 开了 AI 且配置可用 → 先请 AI 现场编一个，校验通过就用它
+ *  - AI 关闭 / 超时 / 返回不合法 → 静默降级到内置事件库，玩家侧只会觉得"这次比较平常"
  */
 
+import { aiReadyForAttempt } from '@/ai/client';
+import { generateAiEvent } from '@/ai/generator';
+import { npcReply } from '@/ai/chat';
 import { Rng } from '@/app/rng';
 import { saveGame } from '@/app/save';
 import { gameStore, getActiveSlot, settingsStore } from '@/app/state';
@@ -27,7 +33,7 @@ import type { GameEvent, GameState } from '@/game/types';
 import { createToast, type ToastHandle } from '@/ui/components';
 import { h } from '@/ui/dom';
 
-type PlayMode = 'event' | 'result' | 'term' | 'ending';
+type PlayMode = 'event' | 'result' | 'term' | 'ending' | 'thinking';
 
 /** 打字机速度：每毫秒显示多少字 */
 const TYPE_SPEED: Record<string, number> = {
@@ -36,6 +42,11 @@ const TYPE_SPEED: Record<string, number> = {
   fast: 0.09,
   instant: 10000,
 };
+
+interface ChatBubble {
+  role: 'user' | 'npc';
+  text: string;
+}
 
 export function playScene(): Scene {
   let state: GameState | null = null;
@@ -49,12 +60,22 @@ export function playScene(): Scene {
   let summary: TermSummary | null = null;
   let toast: ToastHandle | null = null;
   let fillerCounter = 0;
+  /** 每次推进时段都 +1；异步的 AI 请求回来时用它判断"这一轮是不是已经作废了" */
+  let turnToken = 0;
+  let lastAiNote = '';
 
   let topbarEl: HTMLElement | null = null;
   let dialogEl: HTMLElement | null = null;
   let textEl: HTMLElement | null = null;
   let choicesEl: HTMLElement | null = null;
   let ctxRef: SceneContext | null = null;
+  let mounted = false;
+
+  /* ---- NPC 聊天面板 ---- */
+  const chatLogs = new Map<string, ChatBubble[]>();
+  let chatWith: string | null = null;
+  let chatPanelEl: HTMLElement | null = null;
+  let chatBusy = false;
 
   /* ------------------------------------------------------------------ *
    * 状态推进
@@ -69,17 +90,50 @@ export function playScene(): Scene {
     }
   }
 
-  /** 进入下一个时段：挑事件并显示 */
-  function nextTurn(): void {
+  /** 进入下一个时段 */
+  async function nextTurn(): Promise<void> {
     if (!state) return;
-    current = pickEvent(state, rng, { fillerSeed: fillerCounter++ });
-    state = markEventSeen(state, current);
-    gameStore.set(state);
+    const token = ++turnToken;
+    const s = state;
 
-    fullText = renderTemplate(current.text, state);
+    current = null;
+    fullText = '';
     typedChars = 0;
     lastResultText = '';
     resultLines = [];
+    mode = 'event';
+
+    // 要开 AI 就先显示"正在编剧情"
+    const wantAi = s.aiEnabled && aiReadyForAttempt();
+    if (wantAi) {
+      mode = 'thinking';
+      renderAll();
+    }
+
+    let event: GameEvent | null = null;
+
+    if (wantAi && mounted) {
+      const result = await generateAiEvent(s);
+      if (token !== turnToken || !mounted) return; // 场景已切换或已推进，丢弃这次结果
+      if (result.event) {
+        event = result.event;
+        lastAiNote = '';
+      } else {
+        lastAiNote = result.error ?? '';
+        console.warn('[play] AI 生成失败，降级到内置事件库：', lastAiNote);
+      }
+    }
+
+    if (!event && token === turnToken) {
+      event = pickEvent(s, rng, { fillerSeed: fillerCounter++ });
+    }
+    if (!event) return;
+
+    state = markEventSeen(s, event);
+    gameStore.set(state);
+    current = event;
+    fullText = renderTemplate(event.text, state);
+    typedChars = 0;
     mode = 'event';
     renderAll();
   }
@@ -106,11 +160,6 @@ export function playScene(): Scene {
     renderAll();
   }
 
-  function continueFromResult(): void {
-    if (mode !== 'result') return;
-    nextTurn();
-  }
-
   function advancePhase(): void {
     if (!state) return;
     const promoted = promoteToNextPhase(state);
@@ -124,19 +173,19 @@ export function playScene(): Scene {
     autosave();
     summary = null;
     toast?.show(`升入${PHASE_META[state.phase].name}`, 'ok');
-    nextTurn();
+    void nextTurn();
   }
 
   /* ------------------------------------------------------------------ *
-   * 渲染
+   * 顶部状态条
    * ------------------------------------------------------------------ */
 
   function renderTopbar(): void {
     if (!topbarEl || !state) return;
     const s = state;
     const participants = (current?.participants ?? [])
-      .map((id) => s.characters.find((c) => c.id === id)?.name)
-      .filter((n): n is string => Boolean(n));
+      .map((id) => s.characters.find((c) => c.id === id))
+      .filter((c): c is NonNullable<typeof c> => Boolean(c));
 
     topbarEl.replaceChildren(
       h(
@@ -174,7 +223,13 @@ export function playScene(): Scene {
         'div',
         { class: 'play-tools' },
         participants.length > 0
-          ? h('span', { class: 'play-who', text: participants.join(' · ') })
+          ? h('button', {
+              class: 'pixel-btn play-talk-btn',
+              type: 'button',
+              text: '说话',
+              title: `和 ${participants.map((p) => p.name).join('、')} 聊两句`,
+              onClick: () => openChat(participants[0].id),
+            })
           : null,
         h('button', {
           class: 'pixel-btn play-menu-btn',
@@ -189,11 +244,15 @@ export function playScene(): Scene {
     );
   }
 
+  /* ------------------------------------------------------------------ *
+   * 对话框
+   * ------------------------------------------------------------------ */
+
   function renderDialog(): void {
     if (!dialogEl || !state) return;
     const s = state;
 
-    /* ---- 结局（M7 会替换成真正的结局系统） ---- */
+    /* ---- 结局（真正的结局系统在 M7） ---- */
     if (mode === 'ending') {
       dialogEl.replaceChildren(
         h('div', { class: 'dialog-title', text: '毕业' }),
@@ -244,6 +303,21 @@ export function playScene(): Scene {
       return;
     }
 
+    /* ---- AI 正在编剧情 ---- */
+    if (mode === 'thinking') {
+      dialogEl.replaceChildren(
+        h('div', { class: 'dialog-title', text: '……' }),
+        h(
+          'p',
+          { class: 'dialog-text thinking' },
+          h('span', { class: 'dot' }, h('span'), h('span'), h('span')),
+          h('span', { text: 'AI 正在编这一段剧情' }),
+        ),
+        h('p', { class: 'dim small-note', text: '最多等几秒；没编出来就用内置事件库顶上，不影响继续玩。' }),
+      );
+      return;
+    }
+
     /* ---- 选择结果 ---- */
     if (mode === 'result' && current) {
       const parts: HTMLElement[] = [
@@ -274,7 +348,7 @@ export function playScene(): Scene {
             class: 'pixel-btn pixel-btn--primary',
             type: 'button',
             text: '继续 →',
-            onClick: continueFromResult,
+            onClick: () => void nextTurn(),
           }),
         ),
       );
@@ -309,10 +383,18 @@ export function playScene(): Scene {
     });
 
     dialogEl.replaceChildren(
-      h('div', { class: 'dialog-title', text: current.title }),
+      h(
+        'div',
+        { class: 'dialog-title' },
+        h('span', { text: current.title }),
+        current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
+      ),
       textEl,
       choicesEl,
-      h('p', { class: 'dim dialog-hint', text: '点击文字可跳过打字 · 数字键 1-9 直接选择 · Esc 回主菜单' }),
+      h('p', {
+        class: 'dim dialog-hint',
+        text: '点击文字可跳过打字 · 数字键 1-9 直接选择 · Esc 回主菜单',
+      }),
     );
 
     updateTypedText();
@@ -322,13 +404,127 @@ export function playScene(): Scene {
     if (!textEl) return;
     const shown = Math.floor(typedChars);
     textEl.textContent = fullText.slice(0, shown);
-    const done = shown >= fullText.length;
-    choicesEl?.classList.toggle('is-ready', done);
+    choicesEl?.classList.toggle('is-ready', shown >= fullText.length);
   }
 
   function renderAll(): void {
     renderTopbar();
     renderDialog();
+    renderChat();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * NPC 聊天面板
+   * ------------------------------------------------------------------ */
+
+  function openChat(characterId: string): void {
+    chatWith = characterId;
+    renderChat();
+  }
+
+  function closeChat(): void {
+    chatWith = null;
+    renderChat();
+  }
+
+  async function sendChat(text: string): Promise<void> {
+    if (!state || !chatWith || chatBusy) return;
+    const message = text.trim();
+    if (!message) return;
+
+    const id = chatWith;
+    const log = chatLogs.get(id) ?? [];
+    log.push({ role: 'user', text: message });
+    chatLogs.set(id, log);
+    chatBusy = true;
+    renderChat();
+
+    const result = await npcReply(state, id, message);
+    if (!mounted || chatWith !== id) return;
+
+    const after = chatLogs.get(id) ?? [];
+    after.push(
+      result.text
+        ? { role: 'npc', text: result.text }
+        : { role: 'npc', text: '（TA 好像没听清你在说什么。）' },
+    );
+    chatLogs.set(id, after);
+    chatBusy = false;
+    if (!result.text) console.warn('[play] NPC 对话失败：', result.error);
+    renderChat();
+  }
+
+  function renderChat(): void {
+    if (!chatPanelEl) return;
+
+    if (!chatWith || !state) {
+      chatPanelEl.classList.remove('is-open');
+      chatPanelEl.replaceChildren();
+      return;
+    }
+
+    const ch = state.characters.find((c) => c.id === chatWith);
+    if (!ch) {
+      chatWith = null;
+      chatPanelEl.classList.remove('is-open');
+      return;
+    }
+
+    const log = chatLogs.get(ch.id) ?? [];
+    const listEl = h(
+      'div',
+      { class: 'chat-log' },
+      log.length === 0
+        ? h('p', { class: 'dim', text: `课间十分钟，你想跟${ch.name}说点什么？` })
+        : null,
+      ...log.map((b) =>
+        h('div', { class: `chat-bubble ${b.role === 'user' ? 'is-me' : 'is-npc'}` }, b.text),
+      ),
+      chatBusy ? h('div', { class: 'chat-bubble is-npc dim', text: '……' }) : null,
+    );
+
+    const input = h('input', {
+      class: 'pixel-input chat-input',
+      type: 'text',
+      maxlength: '80',
+      placeholder: `对 ${ch.name} 说……`,
+    });
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        void sendChat(input.value);
+        input.value = '';
+      }
+    });
+
+    chatPanelEl.replaceChildren(
+      h(
+        'div',
+        { class: 'chat-head' },
+        h('span', { class: 'chat-title', text: `和 ${ch.name} 说话` }),
+        h('button', { class: 'pixel-btn chat-close', type: 'button', text: '✕', onClick: closeChat }),
+      ),
+      listEl,
+      h(
+        'div',
+        { class: 'chat-input-row' },
+        input,
+        h('button', {
+          class: 'pixel-btn pixel-btn--primary',
+          type: 'button',
+          text: '发送',
+          onClick: () => {
+            void sendChat(input.value);
+            input.value = '';
+          },
+        }),
+      ),
+    );
+
+    chatPanelEl.classList.add('is-open');
+    // 滚到底部
+    listEl.scrollTop = listEl.scrollHeight;
+    input.focus();
   }
 
   /* ------------------------------------------------------------------ *
@@ -340,6 +536,7 @@ export function playScene(): Scene {
 
     mount(ctx: SceneContext, params?: unknown): void {
       ctxRef = ctx;
+      mounted = true;
       toast = createToast();
 
       const loaded = (params as GameState | undefined) ?? gameStore.get();
@@ -366,6 +563,7 @@ export function playScene(): Scene {
 
       topbarEl = h('div', { class: 'play-topbar interactive' });
       dialogEl = h('div', { class: 'play-dialog interactive' });
+      chatPanelEl = h('div', { class: 'play-chat interactive' });
 
       ctx.overlay.appendChild(
         h(
@@ -374,14 +572,17 @@ export function playScene(): Scene {
           topbarEl,
           h('div', { class: 'play-stage' }),
           dialogEl,
+          chatPanelEl,
           toast.el,
         ),
       );
 
-      nextTurn();
+      void nextTurn();
     },
 
     unmount(): void {
+      mounted = false;
+      turnToken += 1; // 让还在飞的 AI 请求作废
       autosave();
       toast?.destroy();
       toast = null;
@@ -389,6 +590,8 @@ export function playScene(): Scene {
       dialogEl = null;
       textEl = null;
       choicesEl = null;
+      chatPanelEl = null;
+      chatWith = null;
       ctxRef = null;
       current = null;
     },
@@ -437,6 +640,14 @@ export function playScene(): Scene {
     },
 
     onKey(e: KeyboardEvent): boolean {
+      if (chatWith) {
+        if (e.key === 'Escape') {
+          closeChat();
+          return true;
+        }
+        return false; // 输入框里正常打字
+      }
+
       if (e.key === ' ' || e.key === 'Enter') {
         if (mode === 'event') {
           if (typedChars < fullText.length) {
@@ -444,17 +655,14 @@ export function playScene(): Scene {
             updateTypedText();
             return true;
           }
-          // 只有一个选项时直接选中，省一次点击
           if (state && current) {
             const choices = availableChoices(state, current);
-            if (choices.length === 1) {
-              choose(choices[0].id);
-            }
+            if (choices.length === 1) choose(choices[0].id);
           }
           return true;
         }
         if (mode === 'result') {
-          continueFromResult();
+          void nextTurn();
           return true;
         }
       }
