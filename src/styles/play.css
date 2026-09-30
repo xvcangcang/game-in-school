@@ -459,11 +459,46 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .chat-input {
-  flex: 1 1 auto;
+  flex: 1 1 160px;
   min-height: 40px;
+}
+
+/* 发送键不再独占一整行，和「继续剧情」并排 */
+.chat-send {
+  flex: 0 0 auto;
+  min-width: 68px;
+}
+
+.chat-continue {
+  flex: 0 0 auto;
+  min-width: 96px;
+  background: var(--c-accent-2);
+  color: var(--c-ink);
+}
+
+.chat-continue:hover:not(:disabled) {
+  background: #8fd39a;
+}
+
+.chat-hint {
+  margin: 0;
+  font-size: 0.72em;
+  line-height: 1.5;
+}
+
+@media (max-width: 639px) {
+  /* 窄屏：输入框独占一行，两个按钮并排在下 */
+  .chat-input {
+    flex: 1 1 100%;
+  }
+  .chat-send,
+  .chat-continue {
+    flex: 1 1 0;
+  }
 }
 
 /* ---------------- 适配 ---------------- */

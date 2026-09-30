@@ -13,7 +13,7 @@
  */
 
 import { aiReadyForAttempt } from '@/ai/client';
-import { generateAiEvent } from '@/ai/generator';
+import { generateAiEvent, generateFollowUpFromChat } from '@/ai/generator';
 import { npcReply } from '@/ai/chat';
 import { unlockEvent } from '@/app/gallery';
 import { Rng } from '@/app/rng';
@@ -82,6 +82,8 @@ export function playScene(): Scene {
   let chatWith: string | null = null;
   let chatPanelEl: HTMLElement | null = null;
   let chatBusy = false;
+  /** 正在让 AI 把对话接进剧情 */
+  let followUpBusy = false;
 
   /* ------------------------------------------------------------------ *
    * 状态推进
@@ -530,6 +532,61 @@ export function playScene(): Scene {
     renderChat();
   }
 
+  /**
+   * 聊完了怎么继续。
+   *
+   * 玩家跟角色聊完如果只能关掉面板，这段对话就白聊了——所以这里让 AI
+   * 把对话接进剧情：说定的事会体现在新剧情里，并给出新的选项。
+   * 注意**不推进时段**：它是接替当前这一幕，而不是又过了一段时间。
+   */
+  async function continueFromChat(): Promise<void> {
+    if (!state || !current || !chatWith || followUpBusy) return;
+
+    const characterId = chatWith;
+    const log = (chatLogs.get(characterId) ?? []).map((b) => ({
+      role: (b.role === 'user' ? 'user' : 'npc') as 'user' | 'npc',
+      text: b.text,
+    }));
+    const s = state;
+    const aiOn = s.aiEnabled && aiReadyForAttempt();
+
+    // 没开 AI 或者还没说话：只是关掉面板，回到原来的选项
+    if (!aiOn || log.length === 0) {
+      closeChat();
+      if (!aiOn) toast?.show('AI 未启用，已回到当前选项', 'info');
+      return;
+    }
+
+    const snapshot = {
+      title: current.title,
+      text: fullText || current.text,
+      choices: availableChoices(s, current).map((c) => renderTemplate(c.text, s)),
+    };
+
+    followUpBusy = true;
+    renderChat();
+
+    const result = await generateFollowUpFromChat(s, snapshot, characterId, log);
+    if (!mounted) return;
+    followUpBusy = false;
+
+    if (!result.event) {
+      console.warn('[play] 聊完继续剧情失败：', result.error);
+      toast?.show('AI 没接上，先按原来的选项继续', 'error');
+      renderChat();
+      return;
+    }
+
+    current = result.event;
+    fullText = renderTemplate(result.event.text, state);
+    typedChars = 0;
+    lastTickChars = 0;
+    mode = 'event';
+    chatWith = null;
+    sfx.confirm();
+    renderAll();
+  }
+
   function renderChat(): void {
     if (!chatPanelEl) return;
 
@@ -546,6 +603,7 @@ export function playScene(): Scene {
       return;
     }
 
+    const aiOn = state.aiEnabled && aiReadyForAttempt();
     const log = chatLogs.get(ch.id) ?? [];
     const listEl = h(
       'div',
@@ -557,6 +615,9 @@ export function playScene(): Scene {
         h('div', { class: `chat-bubble ${b.role === 'user' ? 'is-me' : 'is-npc'}` }, b.text),
       ),
       chatBusy ? h('div', { class: 'chat-bubble is-npc dim', text: '……' }) : null,
+      followUpBusy
+        ? h('div', { class: 'chat-bubble is-npc dim', text: 'AI 正在把这段对话接进剧情……' })
+        : null,
     );
 
     const input = h('input', {
@@ -573,6 +634,27 @@ export function playScene(): Scene {
       }
     });
 
+    const sendBtn = h('button', {
+      class: 'pixel-btn pixel-btn--primary chat-send',
+      type: 'button',
+      text: '发送',
+      disabled: followUpBusy,
+      onClick: () => {
+        void sendChat(input.value);
+        input.value = '';
+      },
+    });
+
+    const continueBtn = h('button', {
+      class: 'pixel-btn chat-continue',
+      type: 'button',
+      // 没开 AI 时这个按钮只负责关掉面板，所以换个说法，别误导玩家
+      text: aiOn ? '继续剧情' : '回到剧情',
+      disabled: followUpBusy,
+      title: aiOn ? '让 AI 依据刚才的对话接着往下写' : 'AI 未启用，回到当前选项',
+      onClick: () => void continueFromChat(),
+    });
+
     chatPanelEl.replaceChildren(
       h(
         'div',
@@ -585,16 +667,15 @@ export function playScene(): Scene {
         'div',
         { class: 'chat-input-row' },
         input,
-        h('button', {
-          class: 'pixel-btn pixel-btn--primary',
-          type: 'button',
-          text: '发送',
-          onClick: () => {
-            void sendChat(input.value);
-            input.value = '';
-          },
-        }),
+        sendBtn,
+        continueBtn,
       ),
+      h('p', {
+        class: 'dim chat-hint',
+        text: aiOn
+          ? '聊完点「继续剧情」，AI 会把这段对话接进故事里，并给出新的选择。'
+          : 'AI 未启用，聊完点「回到剧情」继续做原来的选择。',
+      }),
     );
 
     chatPanelEl.classList.add('is-open');

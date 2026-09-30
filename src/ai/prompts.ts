@@ -111,6 +111,53 @@ export function buildEventRetryPrompt(state: GameState, reason: string): string 
 }
 
 /* ------------------------------------------------------------------ *
+ * 聊完天之后「继续剧情」
+ * ------------------------------------------------------------------ */
+
+export interface ChatTurnForPrompt {
+  role: 'user' | 'npc';
+  text: string;
+}
+
+/**
+ * 玩家没直接做选择，而是先跟某个角色聊了几句，然后点「继续剧情」。
+ * 这时候让模型接着写：把对话里说定的事落进剧情，并给出新的选项。
+ */
+export function buildChatFollowUpPrompt(
+  state: GameState,
+  previous: { title: string; text: string; choices: string[] },
+  characterId: string,
+  log: ChatTurnForPrompt[],
+): string {
+  const ch = state.characters.find((c) => c.id === characterId);
+  const protagonist = state.characters.find((c) => c.isProtagonist);
+
+  const transcript = log
+    .slice(-10)
+    .map((turn) => `${turn.role === 'user' ? protagonist?.name ?? '主角' : ch?.name ?? '对方'}：${turn.text}`)
+    .join('\n');
+
+  return `【刚才这一幕】
+标题：${previous.title}
+正文：${previous.text}
+玩家原本可以选的：${previous.choices.map((c, i) => `${i + 1}. ${c}`).join('　')}
+
+【玩家没有直接选，而是先跟「${ch?.name ?? '对方'}」聊了几句】
+${transcript}
+
+【你的任务】
+接着上面这一幕往下写，并根据这段对话给出新的选择。要求：
+1. 对话里已经说定的事必须体现在新剧情里（答应了、拒绝了、透露了什么信息、两个人现在什么气氛）。
+2. 不要复述对话原文，直接写「接下来发生了什么」。
+3. 2~4 个新选项，**不要和上面已经出现过的选项重复**。
+4. 请只输出 JSON，结构见系统提示。正文里提到主角用 {主角}，提到角色用 {角色id}。
+5. participants 里要包含刚刚对话的角色 ${characterId}。
+
+当前时间：${describeTime(state)}　学段：${PHASE_META[state.phase].name}
+当前属性：${(Object.keys(STAT_META) as StatKey[]).map((k) => `${STAT_META[k].name} ${state.stats[k]}`).join(' · ')}`;
+}
+
+/* ------------------------------------------------------------------ *
  * NPC 自由对话
  * ------------------------------------------------------------------ */
 

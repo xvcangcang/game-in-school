@@ -6,7 +6,13 @@
  */
 
 import { AiError, chat, extractJson } from '@/ai/client';
-import { buildEventRetryPrompt, buildEventUserPrompt, EVENT_SYSTEM_PROMPT } from '@/ai/prompts';
+import {
+  buildChatFollowUpPrompt,
+  buildEventRetryPrompt,
+  buildEventUserPrompt,
+  EVENT_SYSTEM_PROMPT,
+  type ChatTurnForPrompt,
+} from '@/ai/prompts';
 import { validateEventDraft, type AiEventDraft } from '@/ai/schema';
 import { checkCondition } from '@/game/conditions';
 import type { GameEvent, GameState } from '@/game/types';
@@ -47,16 +53,19 @@ export function draftToEvent(draft: AiEventDraft): GameEvent {
 }
 
 /**
- * 生成一个 AI 事件。
- * 失败重试一次（带上失败原因），仍失败就返回 null。
+ * 通用的「请求 → 解析 → 校验 → 转成 GameEvent」流程，失败重试一次。
+ * 事件生成和「聊完继续剧情」都走它，保证两条路的质量标准完全一致。
  */
-export async function generateAiEvent(state: GameState): Promise<GenerateEventResult> {
+async function requestValidatedEvent(
+  state: GameState,
+  firstPrompt: string,
+  retryPrompt: (reason: string) => string,
+): Promise<GenerateEventResult> {
   let lastError = '';
   let rawText = '';
 
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const userContent =
-      attempt === 1 ? buildEventUserPrompt(state) : buildEventRetryPrompt(state, lastError);
+    const userContent = attempt === 1 ? firstPrompt : retryPrompt(lastError);
 
     try {
       rawText = await chat({
@@ -70,7 +79,11 @@ export async function generateAiEvent(state: GameState): Promise<GenerateEventRe
       // 网络/超时/没 Key：重试没有意义，直接放弃
       const code = err instanceof AiError ? err.code : 'NETWORK';
       console.warn('[ai] 生成事件失败：', err);
-      return { event: null, error: `${code}：${err instanceof Error ? err.message : String(err)}`, attempts: attempt };
+      return {
+        event: null,
+        error: `${code}：${err instanceof Error ? err.message : String(err)}`,
+        attempts: attempt,
+      };
     }
 
     let parsed: unknown;
@@ -101,7 +114,42 @@ export async function generateAiEvent(state: GameState): Promise<GenerateEventRe
     return { event, attempts: attempt, raw: rawText };
   }
 
-  return { event: null, error: lastError || '未知错误', attempts: 2, raw: rawText };
+  return {
+    event: null,
+    error: lastError || '未知错误',
+    attempts: 2,
+    raw: rawText,
+  };
+}
+
+/**
+ * 生成一个 AI 事件。
+ * 失败重试一次（带上失败原因），仍失败就返回 null。
+ */
+export async function generateAiEvent(state: GameState): Promise<GenerateEventResult> {
+  return requestValidatedEvent(
+    state,
+    buildEventUserPrompt(state),
+    (reason) => buildEventRetryPrompt(state, reason),
+  );
+}
+
+/**
+ * 玩家跟角色聊完天后点「继续剧情」：把对话接进剧情，给出新的选项。
+ *
+ * 这条路的产物**不会**被标记成"新时段"——它接替当前这一幕，时段不推进。
+ */
+export async function generateFollowUpFromChat(
+  state: GameState,
+  previous: { title: string; text: string; choices: string[] },
+  characterId: string,
+  log: ChatTurnForPrompt[],
+): Promise<GenerateEventResult> {
+  const base = buildChatFollowUpPrompt(state, previous, characterId, log);
+  return requestValidatedEvent(state, base, (reason) => `${base}
+
+【上一次生成不合法，请修正】${reason}
+再次强调：只输出一个 JSON 对象，不要任何解释文字。`);
 }
 
 /** 调试面板用：把一条 AI 事件还原成可读文本 */
