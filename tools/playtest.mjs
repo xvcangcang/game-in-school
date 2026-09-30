@@ -97,11 +97,15 @@ try {
     for (let t = 0; t < maxTurns; t++) {
       // 等打字机跑完；开了真 AI 时每次要等模型返回，所以给足 20 秒
       let guard = 0;
-      while (guard++ < 400 && !document.querySelector('.dialog-choices.is-ready .choice-btn')) {
+      while (
+        guard++ < 400 &&
+        !document.querySelector('.dialog-choices.is-ready .choice-btn:not(.talk-btn)')
+      ) {
         await sleep(50);
       }
 
-      const buttons = document.querySelectorAll('.dialog-choices .choice-btn');
+      // 注意排除 .talk-btn：它是「和XX说句话」，点它会打开聊天面板而不是推进剧情
+      const buttons = document.querySelectorAll('.dialog-choices .choice-btn:not(.talk-btn)');
       if (buttons.length === 0) {
         // 可能停在成绩单或结局页
         const cont = document.querySelector('.dialog-actions .pixel-btn');

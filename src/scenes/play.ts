@@ -72,6 +72,8 @@ export function playScene(): Scene {
   let dialogEl: HTMLElement | null = null;
   let textEl: HTMLElement | null = null;
   let choicesEl: HTMLElement | null = null;
+  let talkTargetsRef: { id: string; name: string }[] = [];
+
   let ctxRef: SceneContext | null = null;
   let mounted = false;
 
@@ -140,15 +142,15 @@ export function playScene(): Scene {
     fullText = renderTemplate(event.text, state);
     typedChars = 0;
     mode = 'event';
-    // 收集进图鉴 + 一点提示音（换时段的那声"铃"）
+    // 收集进图鉴
     unlockEvent(event.id);
-    sfx.bell();
     renderAll();
   }
 
   function choose(choiceId: string): void {
     if (!state || !current || mode !== 'event') return;
 
+    const previousDay = state.day;
     const result = resolveChoice(state, current, choiceId, rng);
     state = result.state;
     gameStore.set(state);
@@ -163,6 +165,9 @@ export function playScene(): Scene {
     const net = result.report.stats.reduce((sum, d) => sum + d.diff, 0);
     if (current.tone === 'bad' || net < 0) sfx.bad();
     else if (current.tone === 'good' || net > 0) sfx.good();
+
+    // 上课铃只在跨天时响一次。原来每个时段都响，几秒一敲，纯噪音。
+    if (state.day !== previousDay) sfx.bell();
 
     if (result.termEnded) {
       summary = summarizeTerm(state);
@@ -197,9 +202,6 @@ export function playScene(): Scene {
   function renderTopbar(): void {
     if (!topbarEl || !state) return;
     const s = state;
-    const participants = (current?.participants ?? [])
-      .map((id) => s.characters.find((c) => c.id === id))
-      .filter((c): c is NonNullable<typeof c> => Boolean(c));
 
     topbarEl.replaceChildren(
       h(
@@ -236,15 +238,7 @@ export function playScene(): Scene {
       h(
         'div',
         { class: 'play-tools' },
-        participants.length > 0
-          ? h('button', {
-              class: 'pixel-btn play-talk-btn',
-              type: 'button',
-              text: '说话',
-              title: `和 ${participants.map((p) => p.name).join('、')} 聊两句`,
-              onClick: () => openChat(participants[0].id),
-            })
-          : null,
+        // 「说话」入口不在这里——它放在对话框的选项列表第一条，见 renderDialog()
         h('button', {
           class: 'pixel-btn play-menu-btn',
           type: 'button',
@@ -419,6 +413,33 @@ export function playScene(): Scene {
     textEl = h('p', { class: 'dialog-text', text: '' });
     choicesEl = h('div', { class: 'dialog-choices interactive' });
 
+    /*
+     * 「说话」放在回复栏的第一条。
+     * 之前它藏在右上角状态条里，而玩家的视线焦点在对话框上，根本不会往那儿看。
+     * 它**不参与数字键编号**：1/2/3 始终留给真正的剧情选项，聊天用 T 键或直接点。
+     */
+    const talkTargets = (current.participants ?? [])
+      .map((id) => s.characters.find((c) => c.id === id))
+      .filter((c): c is NonNullable<typeof c> => Boolean(c))
+      .slice(0, 3);
+
+    talkTargetsRef = talkTargets.map((c) => ({ id: c.id, name: c.name }));
+
+    for (const person of talkTargets) {
+      choicesEl.appendChild(
+        h(
+          'button',
+          {
+            class: 'choice-btn talk-btn',
+            type: 'button',
+            onClick: () => openChat(person.id),
+          },
+          h('span', { class: 'choice-index talk-index', text: '话' }),
+          h('span', { class: 'choice-text', text: `和${person.name}说句话` }),
+        ),
+      );
+    }
+
     const choices = availableChoices(s, current);
     choices.forEach((choice, i) => {
       choicesEl?.appendChild(
@@ -436,17 +457,19 @@ export function playScene(): Scene {
     });
 
     dialogEl.replaceChildren(
-        h(
-          'div',
-          { class: 'dialog-title' },
-          h('span', { text: current.title }),
-          current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
-        ),
+      h(
+        'div',
+        { class: 'dialog-title' },
+        h('span', { text: current.title }),
+        current.source === 'ai' ? h('span', { class: 'ai-badge', text: 'AI' }) : null,
+      ),
       textEl,
       choicesEl,
       h('p', {
         class: 'dim dialog-hint',
-        text: '点击文字可跳过打字 · 数字键 1-9 直接选择 · Esc 回主菜单',
+        text: talkTargets.length
+          ? '点击文字可跳过打字 · 数字键 1-9 直接选择 · T 跟同学说话 · Esc 回主菜单'
+          : '点击文字可跳过打字 · 数字键 1-9 直接选择 · Esc 回主菜单',
       }),
     );
 
@@ -652,13 +675,17 @@ export function playScene(): Scene {
     update(dt: number): void {
       if (mode !== 'event' || !textEl) return;
       if (typedChars >= fullText.length) return;
-      const speed = TYPE_SPEED[settingsStore.get().textSpeed] ?? TYPE_SPEED.normal;
+
+      const speedKey = settingsStore.get().textSpeed;
+      const speed = TYPE_SPEED[speedKey] ?? TYPE_SPEED.normal;
       typedChars = Math.min(fullText.length, typedChars + speed * dt);
       updateTypedText();
 
-      // 打字机的轻微"哒哒"声，每 5 个字响一下
+      // 打字机的轻微"哒"声：每 12 个字一下，且只有慢速/常速才播。
+      // 快速和瞬间模式下文字是成片刷出来的，再配打字音只会变成噪音。
+      if (speedKey === 'fast' || speedKey === 'instant') return;
       const shown = Math.floor(typedChars);
-      if (shown >= lastTickChars + 5 && shown < fullText.length) {
+      if (shown >= lastTickChars + 12 && shown < fullText.length) {
         lastTickChars = shown;
         sfx.type();
       }
@@ -736,6 +763,15 @@ export function playScene(): Scene {
             choose(choice.id);
             return true;
           }
+        }
+      }
+
+      // T：跟在场的人说话（和「说话」那条按钮等价，不影响 1-9 的编号）
+      if ((e.key === 't' || e.key === 'T') && talkTargetsRef.length > 0) {
+        const target = talkTargetsRef[0];
+        if (target) {
+          openChat(target.id);
+          return true;
         }
       }
 

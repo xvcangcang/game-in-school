@@ -23,7 +23,7 @@ import { menuScene } from '@/scenes/menu';
 import { newGameScene } from '@/scenes/newGameScene';
 import { playScene } from '@/scenes/play';
 import { settingsScene } from '@/scenes/settingsScene';
-import { sfx } from '@/ui/audio';
+import { applySfxSetting, audioStatsSnapshot, resetAudioStats, sfx } from '@/ui/audio';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement | null;
 const overlay = document.getElementById('overlay');
@@ -43,6 +43,8 @@ settingsStore.subscribe((s) => {
   applyUiScale(s.uiScale);
   // 玩家刚改过 AI 配置，之前因为没 Key / 超时被熔断的请求应该立刻允许重试
   resetAiBreaker();
+  // 音效开关直接作用在音频母线上，关掉时正在响的也会立刻安静
+  applySfxSetting();
 });
 
 /* 全局按钮音效：一个委托监听就够，不必每个按钮自己接。
@@ -78,7 +80,19 @@ router.start(initialScene, overlay);
 // 方便在浏览器控制台里调试
 declare global {
   interface Window {
-    __game?: { router: Router; stage: typeof stage };
+    __game?: {
+      router: Router;
+      stage: typeof stage;
+      sfx: typeof sfx;
+      audioStats: typeof audioStatsSnapshot;
+      resetAudioStats: typeof resetAudioStats;
+    };
   }
 }
-window.__game = { router, stage };
+window.__game = {
+  router,
+  stage,
+  sfx,
+  audioStats: audioStatsSnapshot,
+  resetAudioStats,
+};

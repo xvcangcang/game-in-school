@@ -33,6 +33,8 @@ export function defaultSettings(): Settings {
     version: SETTINGS_VERSION,
     textSpeed: 'normal',
     sfx: true,
+    // 默认别太响：这是一款会长时间挂在后台的游戏，音效只是点缀
+    sfxVolume: 0.5,
     bgm: true,
     uiScale: 1,
     ai: defaultAiConfig(),

@@ -9,6 +9,7 @@
 
 import { pingAi } from '@/ai/chat';
 import { settingsStore } from '@/app/state';
+import { applySfxSetting, playAllSfx } from '@/ui/audio';
 import type { Scene, SceneContext } from '@/app/router';
 import { C } from '@/render/palette';
 import { drawBackground } from '@/render/tiles';
@@ -128,11 +129,41 @@ export function settingsScene(): Scene {
                 h('span', { class: 'field-label', text: '音效' }),
                 createToggle(s.sfx, (v) => patch((cur) => ({ ...cur, sfx: v }))),
               ),
+              createField({
+                label: '音效音量',
+                hint: '嫌吵就调小，或者直接关掉',
+                control: createSlider(
+                  typeof s.sfxVolume === 'number' ? s.sfxVolume : 0.5,
+                  0,
+                  1,
+                  0.05,
+                  (v) => {
+                    patch((cur) => ({ ...cur, sfxVolume: v }));
+                    applySfxSetting();
+                  },
+                  (v) => `${Math.round(v * 100)}%`,
+                ),
+              }),
+              h(
+                'div',
+                { class: 'row-inline' },
+                h('button', {
+                  class: 'pixel-btn',
+                  type: 'button',
+                  text: '试听全部音效',
+                  onClick: () => playAllSfx(),
+                }),
+                h('span', {
+                  class: 'dim small-note',
+                  text: '依次是：移动 / 点击 / 确认 / 好事 / 坏事 / 上课铃 / 升学 / 打字',
+                }),
+              ),
               h(
                 'div',
                 { class: 'row-inline' },
                 h('span', { class: 'field-label', text: '背景音乐' }),
                 createToggle(s.bgm, (v) => patch((cur) => ({ ...cur, bgm: v }))),
+                h('span', { class: 'dim small-note', text: '（还没做，先占位）' }),
               ),
             ),
 

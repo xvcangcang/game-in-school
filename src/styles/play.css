@@ -123,18 +123,6 @@
   font-size: 0.8em;
 }
 
-.play-talk-btn {
-  min-height: 34px;
-  padding: 2px 12px;
-  font-size: 0.8em;
-  background: var(--c-accent-2);
-  color: var(--c-ink);
-}
-
-.play-talk-btn:hover {
-  background: #8fd39a;
-}
-
 /* AI 标记：让玩家知道这段是现场生成的 */
 .ai-badge {
   margin-left: 8px;
@@ -238,13 +226,15 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  opacity: 0.25;
-  pointer-events: none;
 }
 
-.dialog-choices.is-ready {
-  opacity: 1;
-  pointer-events: auto;
+/*
+ * 打字机没播完之前，剧情选项点不了——但「说话」那条始终可用，
+ * 玩家想直接找同学聊天不该被文字速度挡住。
+ */
+.dialog-choices:not(.is-ready) .choice-btn:not(.talk-btn) {
+  opacity: 0.3;
+  pointer-events: none;
 }
 
 .choice-btn {
@@ -284,6 +274,22 @@
   font-size: 0.8em;
   color: var(--c-ink);
   background: var(--c-accent);
+}
+
+/* 「说话」是开放式的聊天入口，不是剧情选项，所以换一套配色区分开 */
+.talk-btn {
+  background: rgba(34, 68, 54, 0.9);
+  border-color: var(--c-accent-2);
+}
+
+.talk-btn:hover,
+.talk-btn:focus-visible {
+  background: rgba(48, 96, 74, 0.95);
+  border-color: var(--c-accent-2);
+}
+
+.talk-index {
+  background: var(--c-accent-2);
 }
 
 .choice-text {

@@ -40,43 +40,57 @@ export function createMenuList(initial: MenuItem[], options: MenuListOptions = {
   let items = initial;
   let index = 0;
   const listEl = h('div', { class: 'menu-list interactive' });
+  /** 当前的按钮节点，顺序与 items 一致 */
+  let rows: HTMLButtonElement[] = [];
 
   const enabledIndexes = (): number[] =>
     items.map((it, i) => (it.disabled ? -1 : i)).filter((i) => i >= 0);
 
-  function render(): void {
+  function build(): void {
     clear(listEl);
+    rows = [];
     items.forEach((item, i) => {
-      const row = h(
-        'button',
-        {
-          class: [
-            'menu-item',
-            i === index ? 'is-active' : '',
-            item.disabled ? 'is-disabled' : '',
-            item.danger ? 'is-danger' : '',
-          ]
-            .filter(Boolean)
-            .join(' '),
-          type: 'button',
-          disabled: item.disabled,
-          onClick: () => {
-            if (item.disabled) return;
+      const row = h('button', {
+        class: 'menu-item',
+        type: 'button',
+        onClick: () => {
+          if (item.disabled) return;
+          if (index !== i) {
             index = i;
-            render();
-            item.onSelect?.();
-          },
-          onMouseEnter: () => {
-            if (item.disabled || index === i) return;
-            index = i;
-            render();
-            options.onFocusChange?.(item, i);
-          },
+            syncActive();
+          }
+          item.onSelect?.();
         },
-        h('span', { class: 'menu-label', text: item.label }),
-        item.hint ? h('span', { class: 'menu-hint', text: item.hint }) : null,
-      );
+        onMouseEnter: () => {
+          if (item.disabled || index === i) return;
+          index = i;
+          syncActive();
+          options.onFocusChange?.(item, i);
+        },
+      });
+      row.appendChild(h('span', { class: 'menu-label', text: item.label }));
+      if (item.hint) row.appendChild(h('span', { class: 'menu-hint', text: item.hint }));
+      rows.push(row);
       listEl.appendChild(row);
+    });
+    syncActive();
+  }
+
+  /**
+   * 只改 class，**绝不重建 DOM**。
+   *
+   * 这是一个真踩过的坑：原来悬停时直接 clear() 重建整个列表，
+   * 光标下的按钮被销毁又新建，浏览器会再派发一次 mouseover，
+   * 于是「重建 → 再次触发 → 再重建」形成死循环——音效变成机关枪，CPU 也白烧。
+   */
+  function syncActive(): void {
+    items.forEach((item, i) => {
+      const row = rows[i];
+      if (!row) return;
+      row.classList.toggle('is-active', i === index);
+      row.classList.toggle('is-disabled', Boolean(item.disabled));
+      row.classList.toggle('is-danger', Boolean(item.danger));
+      row.disabled = Boolean(item.disabled);
     });
   }
 
@@ -85,12 +99,14 @@ export function createMenuList(initial: MenuItem[], options: MenuListOptions = {
     if (avail.length === 0) return;
     const pos = avail.indexOf(index);
     const nextPos = pos < 0 ? 0 : (pos + delta + avail.length) % avail.length;
-    index = avail[nextPos];
-    render();
+    const nextIndex = avail[nextPos];
+    if (nextIndex === index) return;
+    index = nextIndex;
+    syncActive();
     options.onFocusChange?.(items[index], index);
   }
 
-  render();
+  build();
 
   return {
     el: listEl,
@@ -98,7 +114,7 @@ export function createMenuList(initial: MenuItem[], options: MenuListOptions = {
       items = next;
       const avail = enabledIndexes();
       if (!avail.includes(index)) index = avail[0] ?? 0;
-      render();
+      build();
     },
     handleKey(e: KeyboardEvent): boolean {
       switch (e.key) {
@@ -124,11 +140,13 @@ export function createMenuList(initial: MenuItem[], options: MenuListOptions = {
       }
     },
     focusIndex(i: number): void {
+      if (i === index) return;
       index = i;
-      render();
+      syncActive();
     },
     destroy(): void {
       clear(listEl);
+      rows = [];
       listEl.remove();
     },
   };

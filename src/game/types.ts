@@ -336,7 +336,9 @@ export interface Settings {
   textSpeed: 'slow' | 'normal' | 'fast' | 'instant';
   /** 音效开关 */
   sfx: boolean;
-  /** 背景音乐开关 */
+  /** 音效音量 0 ~ 1 */
+  sfxVolume: number;
+  /** 背景音乐开关（目前还没有 BGM，先占位） */
   bgm: boolean;
   /** 界面缩放微调 0.8 ~ 1.4 */
   uiScale: number;
