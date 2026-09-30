@@ -174,7 +174,7 @@ export async function chat(options: ChatOptions): Promise<string> {
 
     /* ---- 浏览器直连 ---- */
     if (!cfg.apiKey.trim()) {
-      throw new AiError('NO_KEY', '没有填写 API Key，且当前是「浏览器直连」模式');
+      throw new AiError('NO_KEY', '当前是「自备 Key」模式，但还没有填写 API Key');
     }
 
     const res = await fetch(endpointOf(cfg), {

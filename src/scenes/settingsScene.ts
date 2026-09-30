@@ -55,32 +55,43 @@ export function settingsScene(): Scene {
       const s = settingsStore.get();
       toast = createToast();
 
+      /*
+       * 两种连接方式。
+       * 玩家看的是「谁掏钱」，所以按钮文案走人话：
+       *   开发者请客 = 请求打到本站 /api/llm，Key 在服务器上，玩家什么都不用配
+       *   自备 Key   = 浏览器直连模型接口，Key 存在玩家自己机器上
+       */
+      const PROXY_HINT = '由本站服务器带着 Key 转发，你什么都不用配，Key 也不会出现在浏览器里。';
+      const DIRECT_HINT =
+        '浏览器直接连模型接口，需要你自己填一个 Key（只存在这台机器上）。纯静态部署或自测时用。';
+
+      // 先建 Key 输入框，因为连接方式的切换要同步它的可用状态
+      const keyInput = createTextInput(
+        s.ai.apiKey,
+        (v) => patch((cur) => ({ ...cur, ai: { ...cur.ai, apiKey: v.trim() } })),
+        { type: 'password', placeholder: 'sk-...（选「自备 Key」时才需要）', maxLength: 200 },
+      );
+
+      /** 走代理时 Key 在服务器上，输入框没有意义；自备 Key 时才要能填 */
+      const syncKeyInputState = (useProxy: boolean): void => {
+        keyInput.disabled = useProxy;
+      };
+      syncKeyInputState(s.ai.useProxy);
+
       const proxyHint = h('p', {
         class: 'dim small-note',
-        text: s.ai.useProxy
-          ? '请求送到本站的 /api/llm，由服务器带上 Key 转发。Key 不会出现在浏览器里，适合分享给同学。'
-          : '浏览器直连模型接口。Key 只存在你自己这台机器的 localStorage，仅建议自测或纯静态部署时用。',
+        text: s.ai.useProxy ? PROXY_HINT : DIRECT_HINT,
       });
 
       const proxyToggle = createToggle(
         s.ai.useProxy,
         (v) => {
           patch((cur) => ({ ...cur, ai: { ...cur.ai, useProxy: v } }));
-          proxyHint.textContent = v
-            ? '请求送到本站的 /api/llm，由服务器带上 Key 转发。Key 不会出现在浏览器里，适合分享给同学。'
-            : '浏览器直连模型接口。Key 只存在你自己这台机器的 localStorage，仅建议自测或纯静态部署时用。';
+          proxyHint.textContent = v ? PROXY_HINT : DIRECT_HINT;
+          syncKeyInputState(v);
         },
-        ['走本站代理', '浏览器直连'],
+        ['开发者请客', '自备 Key'],
       );
-
-      const keyInput = createTextInput(
-        s.ai.apiKey,
-        (v) => patch((cur) => ({ ...cur, ai: { ...cur.ai, apiKey: v.trim() } })),
-        { type: 'password', placeholder: 'sk-...（直连时才需要）', maxLength: 200 },
-      );
-
-      // 服务端接不入时，Key 输入框没有意义，直连时才高亮
-      keyInput.disabled = s.ai.useProxy;
 
       ctx.overlay.appendChild(
         h(
@@ -227,7 +238,7 @@ export function settingsScene(): Scene {
               }),
               createField({
                 label: 'API Key',
-                hint: '走本站代理时留空即可',
+                hint: '开发者请客时留空即可',
                 control: keyInput,
               }),
               createField({
