@@ -11,15 +11,27 @@
 declare const __APP_VERSION__: string | undefined;
 declare const __BUILD_TIME__: string | undefined;
 
+/** 读 index.html 上的 meta（由 vite.config.ts 的插件写入） */
+function readMeta(name: string): string {
+  if (typeof document === 'undefined') return '';
+  return document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') ?? '';
+}
+
 /**
  * 形如 "0.2.0"。
- * 在非 Vite 环境（node 探针脚本、单元测试）里会退回 'dev'，不会炸。
+ *
+ * 取值顺序：index.html 的 meta → 构建期注入的常量 → 'dev'。
+ * 之所以首选 meta：Vite 8 的 dev 模式**不替换** define（实测），光靠常量的话本地会显示 "vdev"。
  */
-export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+export const APP_VERSION: string = (() => {
+  const fromMeta = readMeta('app-version');
+  if (fromMeta) return fromMeta;
+  return typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+})();
 
 /** 构建时刻（毫秒）。线上行为和本地对不上时，先看一眼它是不是旧包 */
 export const BUILD_TIME: number = (() => {
-  const raw = typeof __BUILD_TIME__ === 'string' ? __BUILD_TIME__ : '';
+  const raw = readMeta('app-build') || (typeof __BUILD_TIME__ === 'string' ? __BUILD_TIME__ : '');
   const t = Date.parse(raw);
   return Number.isNaN(t) ? 0 : t;
 })();
