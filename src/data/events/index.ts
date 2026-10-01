@@ -1,9 +1,14 @@
 import type { GameEvent } from '@/game/types';
 import { COMMON_EVENTS } from './common';
+import { EXTRA_EVENTS } from './extra';
 import { G1_EVENTS } from './g1';
 import { G2_EVENTS } from './g2';
 import { G3_EVENTS } from './g3';
 import { SUB_EVENTS } from './subs';
+import { SUB_EVENTS_2 } from './subs2';
+
+/** 全部小剧情（插曲）= 原有一批 + 扩充的一批 */
+export const ALL_SUB_EVENTS: GameEvent[] = [...SUB_EVENTS, ...SUB_EVENTS_2];
 
 export { SUB_EVENTS };
 
@@ -13,6 +18,7 @@ export { SUB_EVENTS };
  */
 export const MAIN_EVENTS: GameEvent[] = [
   ...COMMON_EVENTS,
+  ...EXTRA_EVENTS,
   ...G1_EVENTS,
   ...G2_EVENTS,
   ...G3_EVENTS,
@@ -25,7 +31,7 @@ export const MAIN_EVENTS: GameEvent[] = [
  * `subEvents` / `followUpId` 里被点名触发（见 game/engine.ts 的 pickFollowUp）。
  * 放进 ALL_EVENTS 是为了让事件图鉴能把它们也收录进来。
  */
-export const ALL_EVENTS: GameEvent[] = [...MAIN_EVENTS, ...SUB_EVENTS];
+export const ALL_EVENTS: GameEvent[] = [...MAIN_EVENTS, ...ALL_SUB_EVENTS];
 
 /** 按 id 建索引，供图鉴、小剧情触发和调试使用 */
 export const EVENT_BY_ID: Record<string, GameEvent> = Object.fromEntries(
