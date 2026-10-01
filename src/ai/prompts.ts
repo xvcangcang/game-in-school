@@ -14,8 +14,8 @@ import { describeTime } from '@/game/schedule';
 import { slotIdAt } from '@/game/conditions';
 import { renderTemplate } from '@/game/text';
 import type { DailySummary } from '@/game/dailySummary';
-import type { Character, GameState, StatKey } from '@/game/types';
-import { PHASE_META, SLOT_META, STAT_META } from '@/game/types';
+import type { Character, GameState, Gender, SceneKind, StatKey, TimeBand } from '@/game/types';
+import { PHASE_META, SCENE_KIND_NAME, SLOT_META, STAT_META } from '@/game/types';
 import type { ChatMessage } from '@/ai/client';
 
 /* ------------------------------------------------------------------ *
@@ -31,8 +31,9 @@ export const EVENT_SYSTEM_PROMPT = `你是中国初中校园题材文字游戏�
 4. 正文 40~90 字，1~3 句；标题 8 字以内。
 5. 2~4 个选项，每个 6~16 字，选项之间要有真实取舍，不能全是好事或全是坏事。
 6. 正文提到主角写 {主角}，提到在场角色写他们的 id，例如 {npc_deskmate}。不要写死姓名。
-7. 【角色人设与设定】是硬约束：别人写下的口头禅、特长、软肋、家庭情况，一旦写进剧情或台词就不能互相矛盾。不必每条都用上，但用上了就要像真的。
-8. 只输出 JSON，不要解释、不要 markdown 代码块。
+7. 【角色人设与设定】是硬约束：别人写下的口头禅、特长、软肋、随身物件、家里的情况，写进剧情或选项里就不能互相矛盾。**每个事件至少要自然带出其中一处具体细节**，不要整段只有泛泛的校园日常。
+8. 【连贯性】选项的 resultText 必须和选项本身严丝合缝：谁选的、谁做的、谁说的要对得上，别把台词安到不在场或不相干的人身上；也要和「本局前提」里已经定下来的事一致。
+9. 只输出 JSON，不要解释、不要 markdown 代码块。
 
 【输出结构】
 {
@@ -69,11 +70,53 @@ export const EVENT_SYSTEM_PROMPT = `你是中国初中校园题材文字游戏�
  * 所以这里只留**结构性信息**：id、名字、身份、性格、好感——这些短且必需。
  * 人设与设定搬到 personaBlock() 单独成块，原因见那边。
  */
-function compactCharacter(c: Character): string {
-  const bits = [c.id, c.name, c.title ?? '', personalityMeta(c.personality).name];
-  const rel = relationLabel(c.relation).name;
-  return `${bits.filter(Boolean).join(' ')} 好感${c.relation}(${rel})`;
+/** 性别在提示词里怎么说。'n'（不指定）就什么都不写，写了反而会诱导模型硬编一个性别 */
+function genderTag(c: Character): string {
+  return c.gender === 'm' ? '男' : c.gender === 'f' ? '女' : '';
 }
+
+/*
+ * 默认带上 id——配角要用 id 让模型写 participants。
+ * 但主角必须传 showId=false：它的 id 对模型没用，露出来只会被照抄成 {player_xxxx}。
+ *
+ * 主角那一行也不显示好感：「好感」说的是**别人对主角**的态度，主角对自己没意义，
+ * 以前会打印出「好感100(铁哥们)」这种莫名其妙的东西。
+ */
+function compactCharacter(c: Character, heroGender: Gender, showId = true): string {
+  const bits = [
+    showId ? c.id : null,
+    c.name,
+    c.title ?? '',
+    genderTag(c),
+    personalityMeta(c.personality).name,
+  ];
+  const head = bits.filter(Boolean).join(' ');
+  if (c.isProtagonist) return head;
+
+  const rel = relationLabel(c.relation, {
+    role: c.role,
+    gender: c.gender,
+    protagonistGender: heroGender,
+  }).name;
+  return `${head} 好感${c.relation}(${rel})`;
+}
+
+/**
+ * 每个时段「说得通」的场景。
+ *
+ * 不给的话模型会在早读写「回到家」——scene 只被校验是不是合法枚举（见 ai/schema.ts），
+ * 没人管它跟时间对不对得上。
+ */
+const SCENES_BY_BAND: Record<TimeBand, SceneKind[]> = {
+  early: ['classroom', 'corridor'],
+  am: ['classroom', 'corridor', 'playground', 'office'],
+  noon: ['cafeteria', 'classroom', 'corridor'],
+  pm: ['classroom', 'corridor', 'playground', 'office'],
+  evening: ['classroom', 'home'],
+};
+
+/** 往提示词里带几条前情。3 条太少，接不上前面的事；再多就白烧 token 了 */
+const HISTORY_IN_PROMPT = 6;
 
 /** 预设角色的 bio 是作者写的点缀。预设里最长的一句 30 字，给 40 是为了别砍在句子中间 */
 const BIO_IN_PROMPT_MAX = 40;
@@ -92,14 +135,20 @@ const BIO_IN_PROMPT_MAX = 40;
 function personaBlock(list: Character[]): string {
   const lines: string[] = [];
   for (const c of list) {
+    /*
+     * 主角**不打内部 id**。
+     * 它的 id 对模型没用（participants 里本来就不该出现主角），写出来反而会带偏：
+     * 实测有一次模型照着仿写了 `{player_xxxx}` 而不是规定的 `{主角}`。
+     */
+    const label = c.isProtagonist ? '主角' : c.id;
     const setting = (c.setting ?? '').trim();
     const bio = (c.bio ?? '').trim();
     if (setting) {
       // 不截断：长度已经由输入框把关，超出只可能是手改存档
-      lines.push(`- ${c.id}（${c.name}）：${setting.replace(/\s+/g, ' ').slice(0, SETTING_MAX_LENGTH)}`);
+      lines.push(`- ${label}（${c.name}）：${setting.replace(/\s+/g, ' ').slice(0, SETTING_MAX_LENGTH)}`);
     } else if (bio && !c.isProtagonist) {
       // 主角的 bio 是占位符「你。」，没有信息量，跳过
-      lines.push(`- ${c.id}（${c.name}）：${bio.replace(/\s+/g, ' ').slice(0, BIO_IN_PROMPT_MAX)}`);
+      lines.push(`- ${label}（${c.name}）：${bio.replace(/\s+/g, ' ').slice(0, BIO_IN_PROMPT_MAX)}`);
     }
   }
   return lines.join('\n');
@@ -116,37 +165,69 @@ export function buildEventUserPrompt(state: GameState): string {
    * 但以前主角同时出现在「主角：」和这份名单里，等于在暗示模型把主角也塞进 participants，
    * 渲染出来就会变成「{主角} 和 {主角} 说话」这种怪东西。顺手也省了一行重复内容。
    */
-  const roster = cast.map((c) => `- ${compactCharacter(c)}`).join('\n');
+  const heroGender = protagonist?.gender ?? 'n';
+  const roster = cast.map((c) => `- ${compactCharacter(c, heroGender)}`).join('\n');
 
   const personas = personaBlock(
     [protagonist, ...cast].filter((c): c is Character => Boolean(c)),
   );
 
-  // 最近 3 段就够接着写了。原来列 5 段，又把标题单独列 8 个，等于说两遍。
-  const recent = state.history
-    .slice(-3)
+  const slot = SLOT_META[slotIdAt(state.slotIndex)];
+
+  // 前情从 3 条放宽到 6 条：只给 3 条时，模型经常接不上更早定下来的事
+  const history = state.history.slice(-HISTORY_IN_PROMPT);
+  const recent = history
     .map((h) => `- ${SLOT_META[h.slot].name}：${h.title}（选了「${h.choiceText}」）`)
     .join('\n');
-  const recentTitles = state.history.slice(-6).map((h) => h.title);
+  const recentTitles = state.history.slice(-8).map((h) => h.title);
 
   const statLines = (Object.keys(STAT_META) as StatKey[])
     .map((k) => `${STAT_META[k].name}${state.stats[k]}`)
     .join(' ');
 
-  return `${PHASE_META[state.phase].name}｜${describeTime(state)}｜${
-    state.difficulty === 'hard' ? '压力很大' : state.difficulty === 'relax' ? '比较轻松' : '普通'
-  }
-属性：${statLines}
+  const phase = PHASE_META[state.phase];
+  const difficulty =
+    state.difficulty === 'hard' ? '压力很大' : state.difficulty === 'relax' ? '比较轻松' : '普通';
+  const sceneHint = SCENES_BY_BAND[slot.band].map((s) => SCENE_KIND_NAME[s]).join(' / ');
+  const flags = state.flags.length
+    ? state.flags.map((f) => `- ${f}`).join('\n')
+    : '（还没有）';
+  const firstSlot = state.history.length === 0;
 
-主角：${protagonist ? compactCharacter(protagonist) : '（无）'}
-${personas ? `\n【角色人设与设定（写剧情时必须遵守）】\n${personas}\n` : ''}
-可出场角色（participants 只能从这里挑，**只写配角、不要写主角**；空数组表示旁白）：
+  /*
+   * 结构说明（改之前先读这个）：
+   * 模型是无状态的——每生成一段剧情都要把「这是谁、在哪、之前定了什么」重讲一遍。
+   * 所以这里按「前提 → 人物 → 已定事项 → 数值 → 前情 → 场景」分段，
+   * 每一段都带一句说明它该怎么用，而不是把一堆数据平铺给模型自己猜。
+   */
+  return `【本局前提】
+世界观：中国初中校园的日常，玩家扮演的就是下面这个「主角」。
+学段：${phase.name}（${phase.subtitle}）｜难度：${difficulty}
+时间：${describeTime(state)}｜本局第 ${state.history.length + 1} 个时段${
+    firstSlot ? '（刚开局，前面什么都没有）' : ''
+  }
+
+【主角】
+${protagonist ? compactCharacter(protagonist, heroGender, false) : '（无）'}
+${personas ? `\n【人设与设定（必须遵守）】\n${personas}\n` : ''}
+【班里的角色】
+participants 只能从这里挑，**只写配角、不要写主角**；空数组表示这一段只有旁白。
 ${roster}
 
-最近：${recent || '（开局第一个时段）'}
+【已经定下来的事】
+${flags}
+这些是不能推翻的前提：已经发生过、已经答应过、已经翻脸的事，别当成没发生，也别把同一件事再演一遍。
+
+【属性】${statLines}
+
+【最近发生】
+${recent || '（前面没有别的事）'}
+上一条选完之后的后果，应该能在这一条里看到影子，而不是各演各的。
 别重复这些标题：${recentTitles.length ? recentTitles.join('、') : '（无）'}
 
-生成「${SLOT_META[slotIdAt(state.slotIndex)].name}」的一件小事。只输出 JSON。`;
+【场景】这个时段说得通的场景：${sceneHint}。别写在时间上不可能的地方。
+
+生成「${slot.name}」的一件小事。只输出 JSON。`;
 }
 
 /** 重试时用的提示词：把上一次的失败原因也告诉模型 */
@@ -194,7 +275,7 @@ ${changes}
 【现在的状态】
 ${(Object.keys(STAT_META) as StatKey[]).map((k) => `${STAT_META[k].name} ${summary.statsAfter[k]}`).join(' · ')}
 心态档位：${summary.moodTier}
-${protagonist ? `我是${protagonist.name}，身份是「${protagonist.title ?? '学生'}」。` : ''}
+${protagonist ? `我是${protagonist.name}，身份是「${protagonist.title ?? '学生'}」。` : ''}${protagonist?.setting ? `\n我自己的情况：${protagonist.setting}` : ''}
 
 请以「我」的口吻为今天写一两句日记。只输出日记内容本身。`;
 }
@@ -221,6 +302,12 @@ export function buildChatFollowUpPrompt(
   const ch = state.characters.find((c) => c.id === characterId);
   const protagonist = state.characters.find((c) => c.isProtagonist);
 
+  // 这条以前完全没带人设，聊完接着写的时候角色就会「失忆」——
+  // 明明设定里写着书包里常备水果糖，接着的剧情里却完全不像同一个人。
+  const personas = personaBlock(
+    [protagonist, ch].filter((c): c is Character => Boolean(c)),
+  );
+
   const transcript = log
     .slice(-10)
     .map((turn) => `${turn.role === 'user' ? protagonist?.name ?? '主角' : ch?.name ?? '对方'}：${turn.text}`)
@@ -243,7 +330,8 @@ ${transcript}
 5. participants 里要包含刚刚对话的角色 ${characterId}。
 
 当前时间：${describeTime(state)}　学段：${PHASE_META[state.phase].name}
-当前属性：${(Object.keys(STAT_META) as StatKey[]).map((k) => `${STAT_META[k].name} ${state.stats[k]}`).join(' · ')}`;
+当前属性：${(Object.keys(STAT_META) as StatKey[]).map((k) => `${STAT_META[k].name} ${state.stats[k]}`).join(' · ')}
+${personas ? `\n【人设与设定（必须遵守）】\n${personas}\n` : ''}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -258,14 +346,20 @@ export function buildChatMessages(
 ): ChatMessage[] {
   const ch = state.characters.find((c) => c.id === characterId);
   const protagonist = state.characters.find((c) => c.isProtagonist);
-  const rel = ch ? relationLabel(ch.relation) : null;
+  const rel = ch
+    ? relationLabel(ch.relation, {
+        role: ch.role,
+        gender: ch.gender,
+        protagonistGender: protagonist?.gender ?? 'n',
+      })
+    : null;
 
   const system: ChatMessage = {
     role: 'system',
     content: `你在一款中国初中校园题材游戏里扮演一个角色，和玩家（主角）在课间聊天。
 
 【你的角色】
-${ch ? describeCharacter(ch) : '一个同班同学'}
+${ch ? describeCharacter(ch, protagonist?.gender ?? 'n') : '一个同班同学'}
 ${rel ? `你和主角的关系：${rel.name}` : ''}
 
 【主角】

@@ -8,7 +8,7 @@
  */
 
 import { pingAi } from '@/ai/chat';
-import { aiUsageStats, resetAiUsage } from '@/ai/client';
+import { aiUsageStats, hasServerProxy, resetAiUsage } from '@/ai/client';
 import { settingsStore } from '@/app/state';
 import { applySfxSetting, playAllSfx } from '@/ui/audio';
 import type { Scene, SceneContext } from '@/app/router';
@@ -88,24 +88,39 @@ export function settingsScene(): Scene {
       });
 
       /*
-       * 「开发者请客」要求同源的 /api/llm 代理，而当前部署环境是纯静态托管，
-       * 那个 Node 进程根本不存在（POST /api/llm 拿到的是 405）。
-       * 与其让玩家选完白等一轮超时再降级，不如把话说在前面。
+       * 「开发者请客」依赖同源的 /api/llm 代理，而纯静态托管（PocketBay 静态站、GitHub Pages…）
+       * 上那个 Node 进程根本不存在，选了也是白等一轮超时再降级。
+       *
+       * 但不能无脑常显：本地开发（vite 的 /api 代理）和自建服务器上，这个选项是**好用**的，
+       * 常显等于把一个能用的功能说死了。所以改成运行时探测（见 ai/client.ts 的 hasServerProxy），
+       * 只在这台机器上确实没有代理时才警告。
+       * 探测结果回来之前先不显示——宁可晚半秒，也别冤枉一个能用的功能。
        */
+      let proxyAvailable: boolean | null = null;
+
       const proxyWarn = h(
         'span',
         { class: 'warn-inline' },
         h('span', { class: 'warn-mark', text: '!' }),
         h('span', { class: 'warn-text', text: '因部署平台自身问题，此选项不可用，请切换到自备APIkey' }),
       );
-      proxyWarn.style.display = s.ai.useProxy ? '' : 'none';
+
+      const syncProxyWarn = (): void => {
+        const missing = settingsStore.get().ai.useProxy && proxyAvailable === false;
+        proxyWarn.style.display = missing ? '' : 'none';
+      };
+      syncProxyWarn();
+      void hasServerProxy().then((ok) => {
+        proxyAvailable = ok;
+        syncProxyWarn();
+      });
 
       const proxyToggle = createToggle(
         s.ai.useProxy,
         (v) => {
           patch((cur) => ({ ...cur, ai: { ...cur.ai, useProxy: v } }));
           proxyHint.textContent = v ? PROXY_HINT : DIRECT_HINT;
-          proxyWarn.style.display = v ? '' : 'none';
+          syncProxyWarn();
         },
         ['开发者请客', '自备 Key'],
       );

@@ -104,6 +104,34 @@ export function aiReadyForAttempt(): boolean {
 }
 
 /* ------------------------------------------------------------------ *
+ * 同源代理到底在不在
+ * ------------------------------------------------------------------ *
+ * 「开发者请客」依赖同源的 /api/llm，而纯静态托管（GitHub Pages、PocketBay 静态站…）
+ * 根本没有那个 Node 进程，前端却看不出来。
+ *
+ * 不能只看状态码：静态站会把未知路径**回退成 index.html 并返回 200**，
+ * GET /api/llm 在真实的代理上反而可能返回 405。所以判据是「返回的到底是不是 JSON」。
+ * 用 /api/health 探，因为它只在真代理上存在，且不需要 Key。
+ */
+
+let proxyProbe: Promise<boolean> | null = null;
+
+/** 探测同源代理是否可用。结果缓存，一次页面加载只探一次 */
+export function hasServerProxy(): Promise<boolean> {
+  proxyProbe ??= (async () => {
+    try {
+      const res = await fetch('/api/health', { headers: { accept: 'application/json' } });
+      const payload: unknown = JSON.parse(await res.text());
+      return (payload as { ok?: unknown })?.ok === true;
+    } catch {
+      // 不是 JSON、请求失败——都按「没有代理」处理
+      return false;
+    }
+  })();
+  return proxyProbe;
+}
+
+/* ------------------------------------------------------------------ *
  * 用量统计
  * ------------------------------------------------------------------ *
  * 起因：玩家反馈"token 消耗有点快"。光看提示词代码估不准（中文一个字大概就是一个 token，

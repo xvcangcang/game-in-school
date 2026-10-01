@@ -343,7 +343,11 @@ export function creationScene(): Scene {
     const list = h('div', { class: 'roster-list interactive' });
 
     draft.npcs.forEach((npc, index) => {
-      const rel = relationLabel(npc.relation);
+      const rel = relationLabel(npc.relation, {
+        role: npc.role,
+        gender: npc.gender,
+        protagonistGender: draft.protagonist.gender,
+      });
       const title = displayTitle(npc);
       const roleName = roleMeta(npc.role).name;
       list.appendChild(
