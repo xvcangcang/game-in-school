@@ -23,6 +23,16 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setDefaultResultOrder } from 'node:dns';
+
+/*
+ * 有些网络环境（校园网 / 运营商 NAT）下 api.deepseek.com 会解析出多个 IPv4 地址，
+ * 其中个别不可达。Node 的 fetch 默认只尝试第一个地址，连不上就直接报 `fetch failed`；
+ * 而 curl 会逐个地址重试，所以「curl 测是好的、游戏里却说连不上」——很容易误判成 Key 失效。
+ * 固定成 IPv4 优先后实测可稳定命中可用地址。
+ * 注意：不要再加 net.setDefaultAutoSelectFamily(true)，本机实测那一项反而会超时。
+ */
+setDefaultResultOrder('ipv4first');
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '..');

@@ -269,6 +269,35 @@
   flex-wrap: wrap;
 }
 
+/* 「开发者请客」在当前部署环境不可用时的红色警示（图标 + 文字） */
+.warn-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-danger);
+  font-size: 0.78em;
+  line-height: 1.4;
+}
+
+.warn-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.25em;
+  height: 1.25em;
+  border-radius: 50%;
+  background: var(--c-danger);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95em;
+  line-height: 1;
+}
+
+.warn-text {
+  white-space: normal;
+}
+
 .preset-row {
   gap: 6px;
 }

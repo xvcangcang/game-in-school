@@ -87,11 +87,25 @@ export function settingsScene(): Scene {
         text: s.ai.useProxy ? PROXY_HINT : DIRECT_HINT,
       });
 
+      /*
+       * 「开发者请客」要求同源的 /api/llm 代理，而当前部署环境是纯静态托管，
+       * 那个 Node 进程根本不存在（POST /api/llm 拿到的是 405）。
+       * 与其让玩家选完白等一轮超时再降级，不如把话说在前面。
+       */
+      const proxyWarn = h(
+        'span',
+        { class: 'warn-inline' },
+        h('span', { class: 'warn-mark', text: '!' }),
+        h('span', { class: 'warn-text', text: '因部署平台自身问题，此选项不可用，请切换到自备APIkey' }),
+      );
+      proxyWarn.style.display = s.ai.useProxy ? '' : 'none';
+
       const proxyToggle = createToggle(
         s.ai.useProxy,
         (v) => {
           patch((cur) => ({ ...cur, ai: { ...cur.ai, useProxy: v } }));
           proxyHint.textContent = v ? PROXY_HINT : DIRECT_HINT;
+          proxyWarn.style.display = v ? '' : 'none';
         },
         ['开发者请客', '自备 Key'],
       );
@@ -200,6 +214,7 @@ export function settingsScene(): Scene {
                 { class: 'row-inline' },
                 h('span', { class: 'field-label', text: '连接方式' }),
                 proxyToggle,
+                proxyWarn,
               ),
               proxyHint,
               h(

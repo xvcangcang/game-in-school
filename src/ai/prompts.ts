@@ -7,7 +7,7 @@
  *  2. 输出格式必须写死成 JSON，并且在 schema.ts 里再校验一遍——提示词不是安全边界
  */
 
-import { describeCharacter, relationLabel } from '@/game/character';
+import { describeCharacter, relationLabel, SETTING_MAX_LENGTH } from '@/game/character';
 import { npcs } from '@/game/character';
 import { personalityMeta } from '@/data/personalities';
 import { describeTime } from '@/game/schedule';
@@ -31,7 +31,8 @@ export const EVENT_SYSTEM_PROMPT = `你是中国初中校园题材文字游戏�
 4. 正文 40~90 字，1~3 句；标题 8 字以内。
 5. 2~4 个选项，每个 6~16 字，选项之间要有真实取舍，不能全是好事或全是坏事。
 6. 正文提到主角写 {主角}，提到在场角色写他们的 id，例如 {npc_deskmate}。不要写死姓名。
-7. 只输出 JSON，不要解释、不要 markdown 代码块。
+7. 【角色人设与设定】是硬约束：别人写下的口头禅、特长、软肋、家庭情况，一旦写进剧情或台词就不能互相矛盾。不必每条都用上，但用上了就要像真的。
+8. 只输出 JSON，不要解释、不要 markdown 代码块。
 
 【输出结构】
 {
@@ -64,22 +65,62 @@ export const EVENT_SYSTEM_PROMPT = `你是中国初中校园题材文字游戏�
  * 原来每人一句 `describeCharacter()`：身份提示 + 性格标签 + 人设 + 设定 + 好感分级，
  * 6 个人就是 600 多字，占了输入的一大半。而其中「同班同学，关系普通」「自来熟、消息灵通」
  * 这类**通用说明**对模型没有增量信息——它本来就知道「同桌」「社牛」是什么意思。
- * 所以这里只留**这个人独有**的东西：id、名字、身份、性格、好感、人设/设定（截断）。
+ *
+ * 所以这里只留**结构性信息**：id、名字、身份、性格、好感——这些短且必需。
+ * 人设与设定搬到 personaBlock() 单独成块，原因见那边。
  */
 function compactCharacter(c: Character): string {
   const bits = [c.id, c.name, c.title ?? '', personalityMeta(c.personality).name];
-  const flavor = (c.setting || c.bio || '').trim().replace(/\s+/g, ' ').slice(0, 26);
   const rel = relationLabel(c.relation).name;
-  return `${bits.filter(Boolean).join(' ')} 好感${c.relation}(${rel})${flavor ? ` ${flavor}` : ''}`;
+  return `${bits.filter(Boolean).join(' ')} 好感${c.relation}(${rel})`;
+}
+
+/** 预设角色的 bio 是作者写的点缀。预设里最长的一句 30 字，给 40 是为了别砍在句子中间 */
+const BIO_IN_PROMPT_MAX = 40;
+
+/**
+ * 人设与设定单独成块。
+ *
+ * 为什么必须分开：以前这一行是 `(setting || bio).slice(0, 26)`，两种东西共用一个 26 字预算。
+ * 但它们的性质完全不同——
+ *  - `setting` 是**玩家自己写的**，输入框上限 SETTING_MAX_LENGTH(200) 字，
+ *    UI 上明说「会原样交给 AI 当作背景设定」。截到 26 字就是一种背刺：
+ *    玩家写「书包里常备水果糖」「400 米第一名」，全被丢掉，自然觉得"自定义人设没作用"。
+ *  - `bio` 是预设角色的固定资料，短点无所谓。
+ * 混在一行里只能取两者的最小值，所以拆开：setting 全文送达，bio 保持原来的短预算。
+ */
+function personaBlock(list: Character[]): string {
+  const lines: string[] = [];
+  for (const c of list) {
+    const setting = (c.setting ?? '').trim();
+    const bio = (c.bio ?? '').trim();
+    if (setting) {
+      // 不截断：长度已经由输入框把关，超出只可能是手改存档
+      lines.push(`- ${c.id}（${c.name}）：${setting.replace(/\s+/g, ' ').slice(0, SETTING_MAX_LENGTH)}`);
+    } else if (bio && !c.isProtagonist) {
+      // 主角的 bio 是占位符「你。」，没有信息量，跳过
+      lines.push(`- ${c.id}（${c.name}）：${bio.replace(/\s+/g, ' ').slice(0, BIO_IN_PROMPT_MAX)}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 /** 把当前局面整理成模型能读的上下文 */
 export function buildEventUserPrompt(state: GameState): string {
   const protagonist = state.characters.find((c) => c.isProtagonist);
-  const roster = [protagonist, ...npcs(state)]
-    .filter((c): c is NonNullable<typeof c> => Boolean(c))
-    .map((c) => `- ${compactCharacter(c)}`)
-    .join('\n');
+  const cast = npcs(state);
+
+  /*
+   * 名单里**只放配角**。
+   * participants 的约定是「只写配角，不要写主角」（见 system 提示第 6 条），
+   * 但以前主角同时出现在「主角：」和这份名单里，等于在暗示模型把主角也塞进 participants，
+   * 渲染出来就会变成「{主角} 和 {主角} 说话」这种怪东西。顺手也省了一行重复内容。
+   */
+  const roster = cast.map((c) => `- ${compactCharacter(c)}`).join('\n');
+
+  const personas = personaBlock(
+    [protagonist, ...cast].filter((c): c is Character => Boolean(c)),
+  );
 
   // 最近 3 段就够接着写了。原来列 5 段，又把标题单独列 8 个，等于说两遍。
   const recent = state.history
@@ -98,7 +139,8 @@ export function buildEventUserPrompt(state: GameState): string {
 属性：${statLines}
 
 主角：${protagonist ? compactCharacter(protagonist) : '（无）'}
-可出场角色（participants 只能从这里挑，也可以空数组表示旁白）：
+${personas ? `\n【角色人设与设定（写剧情时必须遵守）】\n${personas}\n` : ''}
+可出场角色（participants 只能从这里挑，**只写配角、不要写主角**；空数组表示旁白）：
 ${roster}
 
 最近：${recent || '（开局第一个时段）'}
