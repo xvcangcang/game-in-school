@@ -9,6 +9,14 @@
 
 import { pingAi } from '@/ai/chat';
 import { aiUsageStats, hasServerProxy, resetAiUsage } from '@/ai/client';
+import {
+  applyBundle,
+  downloadConfig,
+  parseBundle,
+  restoreSnapshot,
+  snapshotTime,
+  summarizeBundle,
+} from '@/app/backup';
 import { settingsStore } from '@/app/state';
 import { applySfxSetting, playAllSfx } from '@/ui/audio';
 import type { Scene, SceneContext } from '@/app/router';
@@ -383,6 +391,131 @@ export function settingsScene(): Scene {
                 h('span', { class: 'dim small-note', text: '发一个最小请求验证 Key、地址和模型名。' }),
               ),
             ),
+
+            /* ---------- 配置备份 ---------- */
+            (() => {
+              /*
+               * 以前想「换台设备接着玩」只能一个个导存档位，设置和阵容还得重配。
+               * 这里把 localStorage 里所有 cps:* 打成一个文件（见 app/backup.ts）。
+               */
+              const snapshotAt = snapshotTime();
+
+              const exportBtn = h('button', {
+                class: 'pixel-btn pixel-btn--primary',
+                type: 'button',
+                text: '导出配置',
+                onClick: () => {
+                  downloadConfig();
+                  toast?.show('已导出配置文件，去「下载」目录找找', 'ok');
+                },
+              });
+
+              const fileInput = h('input', {
+                class: 'pixel-input',
+                type: 'file',
+                accept: '.json,application/json',
+              });
+              fileInput.addEventListener('change', () => {
+                const f = fileInput.files?.[0];
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const parsed = parseBundle(String(reader.result));
+                  if (!parsed.ok) {
+                    toast?.show(`导入失败：${parsed.error}`, 'error');
+                    fileInput.value = '';
+                    return;
+                  }
+
+                  // 导入会覆盖本机全部数据，先把「里面到底有什么」摊开给玩家看一眼
+                  const sum = summarizeBundle(parsed.bundle);
+                  const saveLines = sum.saves.length
+                    ? sum.saves
+                        .map((x) => `　存档 ${x.slot}：${x.name}（第 ${x.week} 周 第 ${x.day} 天）`)
+                        .join('\n')
+                    : '　（这个文件里没有存档）';
+                  const ok = confirm(
+                    `要用这份配置覆盖本机数据吗？\n\n${saveLines}\n` +
+                      `阵容 ${sum.rosterCount} 人　图鉴 ${sum.galleryCount} 条　主角 ${sum.protagonistName || '（无）'}　设置 ${
+                        sum.hasSettings ? '有' : '无'
+                      }\n\n` +
+                      `本机现在的东西会先自动备份一份，之后可以用「恢复原设定」退回来。`,
+                  );
+                  if (!ok) {
+                    fileInput.value = '';
+                    return;
+                  }
+
+                  applyBundle(parsed.bundle);
+                  toast?.show('导入成功，正在重新加载…', 'ok');
+                  // 设置和场景都是启动时读进内存的，重载一下最保险
+                  setTimeout(() => location.reload(), 700);
+                };
+                reader.readAsText(f);
+              });
+
+              const fmt = (ts: number): string => {
+                const d = new Date(ts);
+                const pad = (n: number): string => String(n).padStart(2, '0');
+                return `${d.getMonth() + 1} 月 ${d.getDate()} 日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+              };
+
+              const restoreBtn = h('button', {
+                class: 'pixel-btn',
+                type: 'button',
+                text: '恢复原设定',
+                disabled: snapshotAt === null,
+                onClick: () => {
+                  if (!confirm('把本机数据退回上一次导入之前的样子？\n导入进来的内容会被丢掉。')) return;
+                  if (!restoreSnapshot()) {
+                    toast?.show('没有找到导入前的备份，恢复不了', 'error');
+                    return;
+                  }
+                  toast?.show('已恢复原设定，正在重新加载…', 'ok');
+                  setTimeout(() => location.reload(), 700);
+                },
+              });
+
+              return h(
+                'section',
+                { class: 'form-section' },
+                h('h3', { class: 'section-title', text: '配置备份' }),
+                h('p', {
+                  class: 'dim small-note',
+                  text: '把设置、阵容、主角、图鉴和三个存档打包成一个文件。换浏览器或换手机时导进去，就能接着玩。',
+                }),
+                h(
+                  'div',
+                  { class: 'row-inline' },
+                  exportBtn,
+                  h('span', {
+                    class: 'dim small-note',
+                    text: '下载成一个 .json 文件。里面含设置（包括 AI Key）和你的存档，别随手发给别人。',
+                  }),
+                ),
+                h(
+                  'div',
+                  { class: 'row-inline' },
+                  fileInput,
+                  h('span', {
+                    class: 'dim small-note',
+                    text: '选一个之前导出的配置文件，会覆盖本机现有数据。',
+                  }),
+                ),
+                h(
+                  'div',
+                  { class: 'row-inline' },
+                  restoreBtn,
+                  h('span', {
+                    class: 'dim small-note',
+                    text:
+                      snapshotAt === null
+                        ? '还没导入过配置，没有可退回去的状态。'
+                        : `退回 ${fmt(snapshotAt)} 导入之前的样子。`,
+                  }),
+                ),
+              );
+            })(),
           ),
           toast.el,
         ),

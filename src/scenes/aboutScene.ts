@@ -4,6 +4,7 @@
  */
 
 import type { Scene, SceneContext } from '@/app/router';
+import { buildLabel, versionLabel } from '@/app/version';
 import { C } from '@/render/palette';
 import { drawBackground } from '@/render/tiles';
 import { STAGE_H, STAGE_W, px } from '@/render/canvas';
@@ -41,7 +42,7 @@ const SECTIONS: { title: string; lines: string[] }[] = [
     lines: [
       'Vite + TypeScript，画面用原生 Canvas 逐像素绘制，文字走网页层。',
       '所有美术都是代码画出来的，没有使用任何外部素材。',
-      '存档只存在你自己的浏览器里，导出后可以发给同学。',
+      '存档只存在你自己的浏览器里；设置页可以一键导出配置（设置 + 阵容 + 全部存档），换台设备也能接着玩。',
     ],
   },
 ];
@@ -55,7 +56,11 @@ export function aboutScene(): Scene {
         h(
           'div',
           { class: 'page-scene' },
-          createPageHeader('关于《课间十分钟》', 'v0.1.0 · 初中校园像素剧情', () => ctx.go('menu')),
+          createPageHeader(
+            '关于《课间十分钟》',
+            `${versionLabel()} · 初中校园像素剧情`,
+            () => ctx.go('menu'),
+          ),
           h(
             'div',
             { class: 'page-body interactive' },
@@ -67,6 +72,11 @@ export function aboutScene(): Scene {
                 ...sec.lines.map((line) => h('p', { class: 'about-line', text: line })),
               ),
             ),
+            // 版本 + 构建时刻。线上行为和本地对不上时，先看这行是不是旧包
+            h('p', {
+              class: 'dim small-note',
+              text: [versionLabel(), buildLabel()].filter(Boolean).join(' · '),
+            }),
           ),
         ),
       );

@@ -7,6 +7,7 @@
 
 import { listSlots } from '@/app/save';
 import { settingsStore } from '@/app/state';
+import { versionLabel } from '@/app/version';
 import type { Scene, SceneContext } from '@/app/router';
 import { C } from '@/render/palette';
 import { drawCharacter } from '@/render/sprite';
@@ -16,8 +17,6 @@ import { createMenuList, type MenuItem, type MenuListHandle } from '@/ui/compone
 import { sfx } from '@/ui/audio';
 import { h } from '@/ui/dom';
 import { DEFAULT_APPEARANCE } from '@/data/appearances';
-
-const VERSION = '0.1.0';
 
 /** 站在讲台前的几个同学，纯装饰 */
 const CROWD = [
@@ -48,7 +47,7 @@ export function menuScene(): Scene {
       { id: 'creation', label: '角色工坊', hint: '捏主角、编辑同学和老师', onSelect: () => ctx.go('creation') },
       { id: 'gallery', label: '事件图鉴', hint: '回看触发过的剧情', onSelect: () => ctx.go('gallery') },
       { id: 'settings', label: '设置', hint: 'AI 接入 / 文字速度 / 音效', onSelect: () => ctx.go('settings') },
-      { id: 'about', label: '关于', hint: `v${VERSION}`, onSelect: () => ctx.go('about') },
+      { id: 'about', label: '关于', hint: versionLabel(), onSelect: () => ctx.go('about') },
     ];
   };
 
@@ -82,7 +81,7 @@ export function menuScene(): Scene {
               class: `menu-badge ${aiOn ? 'is-on' : ''}`,
               text: aiOn ? 'AI 剧情：已启用' : 'AI 剧情：关闭（本地事件库）',
             }),
-            h('span', { class: 'dim menu-ver', text: `v${VERSION}` }),
+            h('span', { class: 'dim menu-ver', text: versionLabel() }),
           ),
         ),
       );
