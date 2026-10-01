@@ -6,9 +6,11 @@
 import {
   deleteSlot,
   downloadSave,
+  firstFreeSlot,
   importGame,
   listSlots,
   loadGame,
+  oldestSlot,
   saveGame,
   slotKey,
 } from '@/app/save';
@@ -57,7 +59,7 @@ export function loadScene(): Scene {
             h('h3', { class: 'section-title', text: '导入存档' }),
             h('p', {
               class: 'dim small-note',
-              text: '选择同学发来的 .json 存档文件，导入后会覆盖到第 1 个存档位。',
+              text: '选择同学发来的 .json 存档文件，导入后会写入第一个空的存档位。',
             }),
             h(
               'div',
@@ -75,8 +77,15 @@ export function loadScene(): Scene {
                   reader.onload = () => {
                     try {
                       const state = importGame(String(reader.result));
-                      saveGame(1, state);
-                      toast?.show('导入成功，已写入存档位 1', 'ok');
+                      // 同样不再写死 1 号位：那会顶掉玩家正在玩的档
+                      const free = firstFreeSlot();
+                      const target = free ?? oldestSlot();
+                      if (free === null && !confirm(`三个存档位都满了，覆盖最旧的「存档 ${target}」？`)) {
+                        toast?.show('已取消导入', 'info');
+                        return;
+                      }
+                      saveGame(target, state);
+                      toast?.show(`导入成功，已写入存档位 ${target}`, 'ok');
                       renderSlots();
                     } catch (err) {
                       toast?.show(`导入失败：${err instanceof Error ? err.message : String(err)}`, 'error');

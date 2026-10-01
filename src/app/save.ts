@@ -205,6 +205,44 @@ export function listSlots(): SaveSlotMeta[] {
   return out;
 }
 
+/** 这个存档位有没有东西。只看键在不在，不解析内容（坏档也算「占了位」） */
+export function hasSaveInSlot(slot: number): boolean {
+  try {
+    return localStorage.getItem(slotKey(slot)) !== null;
+  } catch {
+    // 隐私模式下 localStorage 会直接抛，当作没有
+    return false;
+  }
+}
+
+/**
+ * 第一个空存档位；三个都占了返回 null。
+ *
+ * 存在的理由：新游戏以前写死存到 1 号位（`saveGame(1, state)`），
+ * 于是每开一局都把上一个存档顶掉，2、3 号位永远空着——玩家根本用不到那两位。
+ */
+export function firstFreeSlot(): number | null {
+  for (let slot = 1; slot <= SLOT_COUNT; slot++) {
+    if (!hasSaveInSlot(slot)) return slot;
+  }
+  return null;
+}
+
+/** 已有存档里最旧的那个（按最后更新时间）。一个都没有时返回 1 */
+export function oldestSlot(): number {
+  let oldest = 1;
+  let oldestAt = Number.POSITIVE_INFINITY;
+  for (const meta of listSlots()) {
+    if (!meta.exists) continue;
+    const at = meta.updatedAt ?? 0;
+    if (at < oldestAt) {
+      oldestAt = at;
+      oldest = meta.slot;
+    }
+  }
+  return oldest;
+}
+
 /* ------------------------------------------------------------------ *
  * 导入导出
  * ------------------------------------------------------------------ */

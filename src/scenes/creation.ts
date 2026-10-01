@@ -43,7 +43,7 @@ import { createAppearancePicker } from '@/ui/appearancePicker';
 import { createCharacterPreview } from '@/ui/characterPreview';
 import { createToast, type ToastHandle } from '@/ui/components';
 import { h } from '@/ui/dom';
-import { saveGame } from '@/app/save';
+import { firstFreeSlot, oldestSlot, saveGame } from '@/app/save';
 import type { NewGameParams } from '@/scenes/newGameScene';
 
 interface Draft {
@@ -761,7 +761,37 @@ export function creationScene(): Scene {
 
   let ctxRef: SceneContext | null = null;
 
+  /**
+   * 新游戏该存到哪个位。
+   *
+   * 以前这里写死 1（`saveGame(1, state)`），于是每开一局都把上一个存档顶掉，
+   * 2、3 号位永远空着——玩家根本用不到那两位。
+   * 现在的规矩：优先第一个空位；三个都满了，问一句再覆盖最旧的那个。
+   * 返回 null 表示玩家不愿意覆盖，这时候**不该开局**（原因见 finishNewGame）。
+   */
+  function pickSlotForNewGame(): number | null {
+    const free = firstFreeSlot();
+    if (free !== null) return free;
+
+    const oldest = oldestSlot();
+    const ok = confirm(
+      `三个存档位都满了。\n\n要覆盖最旧的「存档 ${oldest}」吗？\n想保留它就点取消，先去「继续游戏」里删掉一个。`,
+    );
+    return ok ? oldest : null;
+  }
+
   function finishNewGame(): void {
+    /*
+     * 存档位要在建局**之前**定下来：
+     * 三个位都满、玩家又不想覆盖时，直接不开这一局——否则游戏照样能玩，
+     * 但进度无处可存，一关页面就全没了，那比拦住更坑。
+     */
+    const slot = pickSlotForNewGame();
+    if (slot === null) {
+      toast?.show('腾不出存档位，本局没有开始。去「继续游戏」删掉一个再试。', 'error');
+      return;
+    }
+
     const state = createNewGame({
       phase: draft.phase,
       difficulty: draft.difficulty,
@@ -789,12 +819,12 @@ export function creationScene(): Scene {
     saveRoster(draft.npcs);
 
     gameStore.set(state);
-    setActiveSlot(1);
+    setActiveSlot(slot);
     try {
-      saveGame(1, state);
-      toast?.show('已自动存到存档位 1', 'ok');
+      saveGame(slot, state);
+      toast?.show(`新游戏已存到存档位 ${slot}`, 'ok');
     } catch (err) {
-      console.warn('[creation] 自动存档失败：', err);
+      console.warn('[creation]自动存档失败：', err);
     }
     ctxRef?.go('play');
   }
