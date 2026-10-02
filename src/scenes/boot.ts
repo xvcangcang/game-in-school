@@ -10,6 +10,7 @@
 
 import { loadSettings } from '@/app/settings';
 import { mulberry32 } from '@/app/rng';
+import { versionLabel } from '@/app/version';
 import type { Scene, SceneContext } from '@/app/router';
 import { STAGE_H, STAGE_W, px } from '@/render/canvas';
 
@@ -87,7 +88,7 @@ export function bootScene(): Scene {
           </div>
           <button class="pixel-btn pixel-btn--primary" id="boot-start">开始游戏</button>
           <button class="pixel-btn" id="boot-art">美术预览（开发用）</button>
-          <p class="dim boot-ver">v0.1.0 · M1 核心层</p>
+          <p class="dim boot-ver">${versionLabel()} · 启动自检</p>
         </div>
       `;
 
