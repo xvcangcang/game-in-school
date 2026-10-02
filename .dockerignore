@@ -1,0 +1,21 @@
+# 构建上下文瘦身 + 防止密钥进镜像。
+
+# 依赖与产物都在镜像里重新生成
+node_modules
+dist
+dist-ssr
+.vite
+.cache
+
+# 版本库与日志
+.git
+*.log
+npm-debug.log*
+
+# 密钥绝不进镜像：运行时由平台按原路径只读挂载 .env.local
+.env
+.env.local
+.env.*.local
+
+# 截图文档对构建没用，白占上传体积
+docs/shots
