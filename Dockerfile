@@ -31,8 +31,11 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=build /app/package.json ./package.json
-# server/ 是零依赖的，运行时不需要 node_modules
+COPY package.json package-lock.json ./
+# 服务端现在用了 Hono，运行时需要它的依赖。
+# 只装生产依赖：typescript / vite 这些构建期的包不必带进来。
+RUN npm ci --omit=dev
+
 COPY --from=build /app/server ./server
 COPY --from=build /app/dist ./dist
 
