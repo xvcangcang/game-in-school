@@ -4,13 +4,17 @@
   "version": "0.3.0",
   "type": "module",
   "description": "课间十分钟 —— 初中校园主题像素剧情游戏",
+  "main": "server/index.mjs",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "server": "node server/index.mjs",
-    "start": "npm run build && node server/index.mjs",
+    "start": "node server/start.mjs",
     "shot": "node tools/screenshot.mjs",
     "playtest": "node tools/playtest.mjs",
     "mock-llm": "node tools/mock-llm.mjs"
